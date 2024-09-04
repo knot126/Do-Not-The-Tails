@@ -82,6 +82,11 @@ async def steal_nukes(interaction: discord.Interaction, user: discord.User):
 	
 	stolen_nukes[target] = getTime() + getConfig("nukeStealTime")
 	stolen_cooldown[actor] = getTime() + getConfig("nukeStealCooldown")
+	
+	# If we just stole some nukes and have no nukes ourselves it makes sense
+	# that we should have nukes!
+	stolen_nukes[actor] = 0
+	
 	await interaction.response.send_message(f"Stole nukes from **{user.display_name}**! They won't be able to nuke for {formatTime(getConfig('nukeStealTime'))}. >:3")
 
 # @client.event
