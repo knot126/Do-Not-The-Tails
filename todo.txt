@@ -1,0 +1,2 @@
+- Real nuke counts and stealing
+- Stealing levels (e.g. block for 15 min -> can't steal for 3 hours, 3 min -> 30 min, 1 min -> 7 min)

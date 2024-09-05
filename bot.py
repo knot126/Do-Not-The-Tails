@@ -3,10 +3,12 @@ import discord
 import json
 import asyncio
 import time
+import pickle
 from pathlib import Path
 
 ## Bot config loader
 CACHED_CONFIG = None
+SAVE_FILE = "NukeGame.pkl"
 
 def getConfig(prop=None):
 	global CACHED_CONFIG
@@ -38,6 +40,99 @@ def formatTime(t):
 def getTime():
 	return int(time.time())
 
+## Game data and models
+class Player:
+	def __init__(self):
+		# These are the defaults
+		self.nukes = 3
+		self.stolen_until = 0
+		self.steal_cooldown = 0
+		self.build_cooldown = 0
+	
+	def stealNukesFrom(self, count):
+		self.setCooldown("stolen_until", "nukeStealTime")
+		nukes_count = self.nukes
+		self.nukes = 0
+		return nukes_count
+	
+	def stowStolenNukes(self, count):
+		self.setCooldown("steal_cooldown", "nukeStealCooldown")
+		self.nukes += count
+	
+	def buildNukes(self, count):
+		self.setCooldown("build_cooldown", "nukeBuildCooldown")
+		self.nukes += count
+	
+	def setCooldown(self, prop, conf_var):
+		"""
+		Set cooldown time with game property variable as the time
+		"""
+		
+		setattr(self, prop, getTime() + game.getProp(conf_var))
+	
+	def getCooldown(self, prop):
+		"""
+		Return None if there is no cooldown remaining or an integer representing
+		the number of seconds until the cooldown expires.
+		"""
+		
+		t = getattr(self, prop) - getTime()
+		return t if t > 0 else None
+	
+	def pack(self):
+		return self.__dict__
+	
+	def unpack(self, data):
+		self.__dict__ |= data
+		return self
+
+class Game:
+	def __init__(self):
+		self.players = {}
+		self.props = {}
+	
+	def getProp(self, name):
+		return self.props[name]
+	
+	def setProp(self, name, value):
+		if name in self.props:
+			self.props[name] = type(self.props[name])(value)
+		else:
+			self.props[name] = value
+	
+	def getPlayer(self, id):
+		if id not in self.players:
+			self.players[id] = Player()
+		
+		return self.players[id]
+	
+	def pack(self):
+		packed = self.__dict__.copy()
+		packed["players"] = packed["players"].copy()
+		
+		for k, v in packed["players"].items():
+			packed["players"][k] = v.pack()
+		
+		return packed
+	
+	def unpack(self, data):
+		self.__dict__ = data
+		
+		for id, data in self.players.items():
+			p = Player()
+			self.players[id] = p.unpack(data)
+		
+		return self
+	
+	def save(self):
+		Path(SAVE_FILE).write_bytes(pickle.dumps(self.pack()))
+	
+	def load(self):
+		if os.path.isfile(SAVE_FILE):
+			self.unpack(pickle.loads(Path(SAVE_FILE).read_bytes()))
+
+game = Game()
+
 ## Client setup
 intents = discord.Intents.default()
 # intents.message_content = True
@@ -52,6 +147,7 @@ async def on_ready():
 	print(f'{client.user} has connected to Discord!')
 	await client.tree.sync()
 	print(f'Command tree synched')
+	game.load()
 
 @client.tree.command(name="nuke", description="Nukes another user.")
 @discord.app_commands.describe(user="User to nuke", wait="Time to wait in seconds, max 300 (5min)")
@@ -66,11 +162,11 @@ async def nuke(interaction: discord.Interaction, user: discord.User, wait: int =
 		await interaction.response.send_message(f"**Danger!** <@{user.id}> has been nuked by <@{actor}>!")
 	else:
 		wait = min(wait, 300)
-		await interaction.response.send_message(f"**{user.display_name}** will be nuked in {formatTime(wait)}!")
+		await interaction.response.send_message(f"Launched a nuke to **{user.display_name}** that will arrive in {formatTime(wait)}!")
 		await asyncio.sleep(wait)
 		await interaction.followup.send(f"**Danger!** <@{user.id}> has been nuked by <@{actor}>!")
 
-@client.tree.command(name="steal_nukes", description="Steal nukes from another user.")
+@client.tree.command(name="steal-nukes", description="Steal nukes from another user.")
 @discord.app_commands.describe(user="User to steal nukes from")
 async def steal_nukes(interaction: discord.Interaction, user: discord.User):
 	target = user.id
@@ -97,4 +193,8 @@ async def steal_nukes(interaction: discord.Interaction, user: discord.User):
 # 	if "god" in message.content.lower().replace(".", "").replace("!", "").split():
 # 		await message.channel.send('I am god!')
 
-client.run(getConfig('token'))
+if __name__ == "__main__":
+	try:
+		client.run(getConfig('token'))
+	finally:
+		game.save()
