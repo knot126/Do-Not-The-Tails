@@ -9,6 +9,12 @@ from pathlib import Path
 ## Bot config loader
 CACHED_CONFIG = None
 SAVE_FILE = "NukeGame.pkl"
+ADMIN_USERS = [818564860484780083]
+DEFAULT_PROPS = {
+	"nukeStealTime": 20,
+	"nukeStealCooldown": 180,
+	"nukeBuildCooldown": 15,
+}
 
 def getConfig(prop=None):
 	global CACHED_CONFIG
@@ -89,7 +95,7 @@ class Player:
 class Game:
 	def __init__(self):
 		self.players = {}
-		self.props = {}
+		self.props = DEFAULT_PROPS.copy()
 	
 	def getProp(self, name):
 		return self.props[name]
@@ -106,6 +112,9 @@ class Game:
 		
 		return self.players[id]
 	
+	def allProps(self):
+		return self.props
+	
 	def pack(self):
 		packed = self.__dict__.copy()
 		packed["players"] = packed["players"].copy()
@@ -121,6 +130,8 @@ class Game:
 		for id, data in self.players.items():
 			p = Player()
 			self.players[id] = p.unpack(data)
+		
+		self.props = DEFAULT_PROPS | self.props
 		
 		return self
 	
@@ -176,14 +187,42 @@ async def steal_nukes(interaction: discord.Interaction, user: discord.User):
 		await interaction.response.send_message(f"You've stolen nukes too recently to do it again. You can try again in {formatTime(stolen_cooldown[actor] - getTime())}.", ephemeral=True)
 		return
 	
-	stolen_nukes[target] = getTime() + getConfig("nukeStealTime")
-	stolen_cooldown[actor] = getTime() + getConfig("nukeStealCooldown")
+	stolen_nukes[target] = getTime() + game.getProp("nukeStealTime")
+	stolen_cooldown[actor] = getTime() + game.getProp("nukeStealCooldown")
 	
 	# If we just stole some nukes and have no nukes ourselves it makes sense
 	# that we should have nukes!
 	stolen_nukes[actor] = 0
 	
-	await interaction.response.send_message(f"Stole nukes from **{user.display_name}**! They won't be able to nuke for {formatTime(getConfig('nukeStealTime'))}. >:3")
+	await interaction.response.send_message(f"Stole nukes from **{user.display_name}**! They won't be able to nuke for {formatTime(game.getProp('nukeStealTime'))}. >:3")
+
+@client.tree.command(name="set-property", description="Set game property.")
+@discord.app_commands.describe(property="Name of property to set", value="Value to set property to")
+async def steal_nukes(interaction: discord.Interaction, property: str, value: str):
+	if (interaction.user.id not in ADMIN_USERS):
+		await interaction.response.send_message(f"You are not the game master and cannot set game properties.", ephemeral=True)
+		return
+	
+	try:
+		game.setProp(property, value)
+		await interaction.response.send_message(f"Set property successfully", ephemeral=True)
+	except Exception as e:
+		await interaction.response.send_message(f"Failed to set property: {e}", ephemeral=True)
+
+@client.tree.command(name="list-properties", description="List all game properties.")
+@discord.app_commands.describe(prefix="Property name prefix to filter by")
+async def steal_nukes(interaction: discord.Interaction, prefix: str = ""):
+	if (interaction.user.id not in ADMIN_USERS):
+		await interaction.response.send_message(f"You are not the game master and cannot view game properties.", ephemeral=True)
+		return
+	
+	msg = ""
+	
+	for k, v in game.allProps().items():
+		if k.startswith(prefix):
+			msg += f"* {k} = ({type(v).__name__}) {repr(v)}\n"
+	
+	await interaction.response.send_message(msg if msg else "*No properties*", ephemeral=True)
 
 # @client.event
 # async def on_message(message):
