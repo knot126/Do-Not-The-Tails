@@ -4,6 +4,7 @@ import json
 import asyncio
 import time
 import pickle
+import random
 from pathlib import Path
 
 ## Bot config loader
@@ -14,6 +15,8 @@ DEFAULT_PROPS = {
 	"nukeStealTime": 20,
 	"nukeStealCooldown": 180,
 	"nukeBuildCooldown": 15,
+	"dadJoke": True,
+	"dadJokeFreq": 0.01,
 }
 
 def getConfig(prop=None):
@@ -45,6 +48,9 @@ def formatTime(t):
 
 def getTime():
 	return int(time.time())
+
+def strToBool(s):
+	return (s.lower().startswith("t") or s == '1')
 
 ## Game data and models
 class Player:
@@ -102,9 +108,12 @@ class Game:
 	
 	def setProp(self, name, value):
 		if name in self.props:
-			self.props[name] = type(self.props[name])(value)
-		else:
-			self.props[name] = value
+			if type(self.props[name]) == bool and type(value) == str:
+				self.props[name] = strToBool(value)
+			else:
+				self.props[name] = type(self.props[name])(value)
+		# else:
+		# 	self.props[name] = value
 	
 	def getPlayer(self, id):
 		if id not in self.players:
@@ -136,7 +145,10 @@ class Game:
 		return self
 	
 	def save(self):
-		Path(SAVE_FILE).write_bytes(pickle.dumps(self.pack()))
+		try:
+			Path(SAVE_FILE).write_bytes(pickle.dumps(self.pack()))
+		except:
+			print("failed to save game")
 	
 	def load(self):
 		if os.path.isfile(SAVE_FILE):
@@ -146,7 +158,7 @@ game = Game()
 
 ## Client setup
 intents = discord.Intents.default()
-# intents.message_content = True
+intents.message_content = True
 client = discord.Client(intents=intents)
 client.tree = discord.app_commands.CommandTree(client)
 
@@ -206,6 +218,7 @@ async def steal_nukes(interaction: discord.Interaction, property: str, value: st
 	try:
 		game.setProp(property, value)
 		await interaction.response.send_message(f"Set property successfully", ephemeral=True)
+		game.save()
 	except Exception as e:
 		await interaction.response.send_message(f"Failed to set property: {e}", ephemeral=True)
 
@@ -224,13 +237,38 @@ async def steal_nukes(interaction: discord.Interaction, prefix: str = ""):
 	
 	await interaction.response.send_message(msg if msg else "*No properties*", ephemeral=True)
 
-# @client.event
-# async def on_message(message):
-# 	if message.author == client.user:
-# 		return
-# 	
-# 	if "god" in message.content.lower().replace(".", "").replace("!", "").split():
-# 		await message.channel.send('I am god!')
+I_AM_REPLACEMENTS = {
+	"im": "hi",
+	"Im": "Hi",
+	"i'm": "hi",
+	"I'm": "Hi",
+}
+
+def replace_im(string):
+	has_iam = False
+	first_iam = -1
+	words = string.split(" ")
+	
+	for i in range(len(words)):
+		if words[i] in I_AM_REPLACEMENTS:
+			has_iam = True
+			if first_iam == -1: first_iam = i
+			words[i] = I_AM_REPLACEMENTS[words[i]]
+	
+	words = words[first_iam:]
+	
+	return (has_iam, " ".join(words))
+
+@client.event
+async def on_message(message):
+	if message.author == client.user:
+		return
+	
+	if (game.getProp("dadJoke")):
+		can_dad_joke, dad_joke_string = replace_im(message.content)
+		
+		if can_dad_joke and random.random() < game.getProp("dadJokeFreq"):
+			await message.reply(dad_joke_string)
 
 if __name__ == "__main__":
 	try:
