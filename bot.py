@@ -106,12 +106,15 @@ class Game:
 	def getProp(self, name):
 		return self.props[name]
 	
-	def setProp(self, name, value):
+	def setProp(self, name, value = None):
 		if name in self.props:
-			if type(self.props[name]) == bool and type(value) == str:
-				self.props[name] = strToBool(value)
+			if value:
+				if type(self.props[name]) == bool and type(value) == str:
+					self.props[name] = strToBool(value)
+				else:
+					self.props[name] = type(self.props[name])(value)
 			else:
-				self.props[name] = type(self.props[name])(value)
+				self.props[name] = DEFAULT_PROPS[name]
 		# else:
 		# 	self.props[name] = value
 	
@@ -210,13 +213,13 @@ async def steal_nukes(interaction: discord.Interaction, user: discord.User):
 
 @client.tree.command(name="set-property", description="Set game property.")
 @discord.app_commands.describe(property="Name of property to set", value="Value to set property to")
-async def steal_nukes(interaction: discord.Interaction, property: str, value: str):
+async def set_property(interaction: discord.Interaction, property: str, value: str = ""):
 	if (interaction.user.id not in ADMIN_USERS):
 		await interaction.response.send_message(f"You are not the game master and cannot set game properties.", ephemeral=True)
 		return
 	
 	try:
-		game.setProp(property, value)
+		game.setProp(property, value if value else None)
 		await interaction.response.send_message(f"Set property successfully", ephemeral=True)
 		game.save()
 	except Exception as e:
@@ -224,7 +227,7 @@ async def steal_nukes(interaction: discord.Interaction, property: str, value: st
 
 @client.tree.command(name="list-properties", description="List all game properties.")
 @discord.app_commands.describe(prefix="Property name prefix to filter by")
-async def steal_nukes(interaction: discord.Interaction, prefix: str = ""):
+async def list_properties(interaction: discord.Interaction, prefix: str = ""):
 	if (interaction.user.id not in ADMIN_USERS):
 		await interaction.response.send_message(f"You are not the game master and cannot view game properties.", ephemeral=True)
 		return
