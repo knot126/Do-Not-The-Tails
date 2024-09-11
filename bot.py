@@ -14,7 +14,7 @@ ADMIN_USERS = [818564860484780083]
 DEFAULT_PROPS = {
 	"nukeStealTime": 20,
 	"nukeStealCooldown": 180,
-	"nukeBuildCooldown": 15,
+	"nukeFailFreq": 0.01,
 	"dadJoke": True,
 	"dadJokeFreq": 0.01,
 }
@@ -184,13 +184,20 @@ async def nuke(interaction: discord.Interaction, user: discord.User, wait: int =
 		await interaction.response.send_message(f"Your nukes were stolen and you cannot nuke anyone for {formatTime(stolen_nukes[actor] - getTime())}!", ephemeral=True)
 		return
 	
+	msgtext = ""
+	
+	if (random.random() < game.getProp("nukeFailFreq")):
+		msgtext = f"**Alert!** <@{actor}> tried to nuke <@{user.id}> but the nukes didn't work!"
+	else:
+		msgtext = f"**Danger!** <@{user.id}> has been nuked by <@{actor}>!"
+	
 	if wait == 0:
-		await interaction.response.send_message(f"**Danger!** <@{user.id}> has been nuked by <@{actor}>!")
+		await interaction.response.send_message(msgtext)
 	else:
 		wait = min(wait, 300)
-		await interaction.response.send_message(f"Launched a nuke to **{user.display_name}** that will arrive in {formatTime(wait)}!")
+		await interaction.response.send_message(f"Launched a nuke to **{user.display_name}** that should arrive in {formatTime(wait)}!")
 		await asyncio.sleep(wait)
-		await interaction.followup.send(f"**Danger!** <@{user.id}> has been nuked by <@{actor}>!")
+		await interaction.followup.send(msgtext)
 
 @client.tree.command(name="steal-nukes", description="Steal nukes from another user.")
 @discord.app_commands.describe(user="User to steal nukes from")
