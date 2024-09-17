@@ -226,8 +226,8 @@ async def nuke(interaction: discord.Interaction, user: discord.User, wait: int =
 		await interaction.followup.send(msgtext)
 
 @client.tree.command(name="steal-nukes", description="Steal nukes from another user.")
-@discord.app_commands.describe(user="User to steal nukes from")
-async def steal_nukes(interaction: discord.Interaction, user: discord.User):
+@discord.app_commands.describe(user="User to steal nukes from", ping="If the user should be pinged")
+async def steal_nukes(interaction: discord.Interaction, user: discord.User, ping: bool = False):
 	target = user.id
 	actor = interaction.user.id
 	
@@ -242,7 +242,8 @@ async def steal_nukes(interaction: discord.Interaction, user: discord.User):
 	# that we should have nukes!
 	stolen_nukes[actor] = 0
 	
-	await interaction.response.send_message(f"Stole nukes from **{user.display_name}**! They won't be able to nuke for {formatTime(game.getProp('nukeStealTime'))}. >:3")
+	user_text = f"<@{user.id}>" if ping else f"**{user.display_name}**"
+	await interaction.response.send_message(f"Stole nukes from {user_text}! They won't be able to nuke for {formatTime(game.getProp('nukeStealTime'))}. >:3")
 
 @client.tree.command(name="set-property", description="Set game property.")
 @discord.app_commands.describe(property="Name of property to set", value="Value to set property to")
