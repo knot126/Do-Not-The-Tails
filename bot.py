@@ -5,6 +5,7 @@ import asyncio
 import time
 import pickle
 import random
+import traceback
 from pathlib import Path
 
 ## Bot config loader
@@ -17,6 +18,8 @@ DEFAULT_PROPS = {
 	"nukeFailFreq": 0.01,
 	"dadJoke": True,
 	"dadJokeFreq": 0.01,
+	"dadJokeServers": [],
+	"admins": ADMIN_USERS,
 }
 
 def getConfig(prop=None):
@@ -51,6 +54,24 @@ def getTime():
 
 def strToBool(s):
 	return (s.lower().startswith("t") or s == '1')
+
+def evalListDiff(arr, cmddifflist, typ = int):
+	words = cmddifflist.split()
+	
+	for i in range(len(words)):
+		if (i % 2 == 0):
+			value = typ(words[i + 1])
+			
+			match words[i]:
+				case "+" | "append":
+					arr.append(value)
+				
+				case "&" | "add" | "idempotent-append":
+					if value not in arr:
+						arr.append(value)
+				
+				case "-" | "remove":
+					arr.remove(value)
 
 ## Game data and models
 class Player:
@@ -111,6 +132,8 @@ class Game:
 			if value:
 				if type(self.props[name]) == bool and type(value) == str:
 					self.props[name] = strToBool(value)
+				if type(self.props[name]) == list and type(value) == str:
+					evalListDiff(self.props[name], value)
 				else:
 					self.props[name] = type(self.props[name])(value)
 			else:
@@ -176,20 +199,23 @@ async def on_ready():
 	game.load()
 
 @client.tree.command(name="nuke", description="Nukes another user.")
-@discord.app_commands.describe(user="User to nuke", wait="Time to wait in seconds, max 300 (5min)")
-async def nuke(interaction: discord.Interaction, user: discord.User, wait: int = 0):
-	actor = interaction.user.id
+@discord.app_commands.describe(user="User to nuke", wait="Time to wait in seconds, max 300 (5min)", ping="If the user will be pinged")
+async def nuke(interaction: discord.Interaction, user: discord.User, wait: int = 0, ping: bool = False):
+	actor = interaction.user
 	
-	if (actor in stolen_nukes and stolen_nukes[actor] >= getTime()):
+	if (actor.id in stolen_nukes and stolen_nukes[actor] >= getTime()):
 		await interaction.response.send_message(f"Your nukes were stolen and you cannot nuke anyone for {formatTime(stolen_nukes[actor] - getTime())}!", ephemeral=True)
 		return
 	
 	msgtext = ""
 	
+	def getname(u):
+		return f"<@{u.id}>" if ping else f"**{u.display_name}**"
+	
 	if (random.random() < game.getProp("nukeFailFreq")):
-		msgtext = f"**Alert!** <@{actor}> tried to nuke <@{user.id}> but the nukes didn't work!"
+		msgtext = f"**Alert!** {getname(actor)} tried to nuke {getname(user)} but the nukes didn't work!"
 	else:
-		msgtext = f"**Danger!** <@{user.id}> has been nuked by <@{actor}>!"
+		msgtext = f"**Danger!** {getname(user)} has been nuked by {getname(actor)}!"
 	
 	if wait == 0:
 		await interaction.response.send_message(msgtext)
@@ -221,7 +247,7 @@ async def steal_nukes(interaction: discord.Interaction, user: discord.User):
 @client.tree.command(name="set-property", description="Set game property.")
 @discord.app_commands.describe(property="Name of property to set", value="Value to set property to")
 async def set_property(interaction: discord.Interaction, property: str, value: str = ""):
-	if (interaction.user.id not in ADMIN_USERS):
+	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot set game properties.", ephemeral=True)
 		return
 	
@@ -231,11 +257,12 @@ async def set_property(interaction: discord.Interaction, property: str, value: s
 		game.save()
 	except Exception as e:
 		await interaction.response.send_message(f"Failed to set property: {e}", ephemeral=True)
+		print(traceback.format_exc())
 
 @client.tree.command(name="list-properties", description="List all game properties.")
 @discord.app_commands.describe(prefix="Property name prefix to filter by")
 async def list_properties(interaction: discord.Interaction, prefix: str = ""):
-	if (interaction.user.id not in ADMIN_USERS):
+	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot view game properties.", ephemeral=True)
 		return
 	
@@ -274,7 +301,7 @@ async def on_message(message):
 	if message.author == client.user:
 		return
 	
-	if (game.getProp("dadJoke")):
+	if (game.getProp("dadJoke") and (message.guild.id in game.getProp("dadJokeServers"))):
 		can_dad_joke, dad_joke_string = replace_im(message.content)
 		
 		if can_dad_joke and random.random() < game.getProp("dadJokeFreq"):
