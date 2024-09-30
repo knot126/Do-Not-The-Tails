@@ -199,8 +199,8 @@ async def on_ready():
 	game.load()
 
 @client.tree.command(name="nuke", description="Nukes another user.")
-@discord.app_commands.describe(user="User to nuke", wait="Time to wait in seconds, max 300 (5min)", ping="If the user will be pinged")
-async def nuke(interaction: discord.Interaction, user: discord.User, wait: int = 0, ping: bool = False):
+@discord.app_commands.describe(user="User to nuke", wait="Time to wait in seconds, max 300 (5min)", ping="If the user will be pinged", reason="Reason for nuking this user")
+async def nuke(interaction: discord.Interaction, user: discord.User, wait: int = 0, ping: bool = False, reason: str = ""):
 	actor = interaction.user
 	
 	if (actor.id in stolen_nukes and stolen_nukes[actor] >= getTime()):
@@ -217,6 +217,9 @@ async def nuke(interaction: discord.Interaction, user: discord.User, wait: int =
 	else:
 		msgtext = f"**Danger!** {getname(user)} has been nuked by {getname(actor)}!"
 	
+	if reason:
+		msgtext += f"\n**Reason:** {reason}"
+	
 	if wait == 0:
 		await interaction.response.send_message(msgtext)
 	else:
@@ -226,8 +229,8 @@ async def nuke(interaction: discord.Interaction, user: discord.User, wait: int =
 		await interaction.followup.send(msgtext)
 
 @client.tree.command(name="steal-nukes", description="Steal nukes from another user.")
-@discord.app_commands.describe(user="User to steal nukes from", ping="If the user should be pinged")
-async def steal_nukes(interaction: discord.Interaction, user: discord.User, ping: bool = False):
+@discord.app_commands.describe(user="User to steal nukes from", ping="If the user should be pinged", reason="Reason for stealing this user's nukes")
+async def steal_nukes(interaction: discord.Interaction, user: discord.User, ping: bool = False, reason: str = ""):
 	target = user.id
 	actor = interaction.user.id
 	
@@ -243,7 +246,12 @@ async def steal_nukes(interaction: discord.Interaction, user: discord.User, ping
 	stolen_nukes[actor] = 0
 	
 	user_text = f"<@{user.id}>" if ping else f"**{user.display_name}**"
-	await interaction.response.send_message(f"Stole nukes from {user_text}! They won't be able to nuke for {formatTime(game.getProp('nukeStealTime'))}. >:3")
+	msgtext = f"Stole nukes from {user_text}! They won't be able to nuke for {formatTime(game.getProp('nukeStealTime'))}."
+	
+	if reason:
+		msgtext += f"\n**Reason:** {reason}"
+	
+	await interaction.response.send_message(msgtext)
 
 @client.tree.command(name="set-property", description="Set game property.")
 @discord.app_commands.describe(property="Name of property to set", value="Value to set property to")
