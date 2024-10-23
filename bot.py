@@ -203,8 +203,8 @@ async def on_ready():
 async def nuke(interaction: discord.Interaction, user: discord.User, wait: int = 0, ping: bool = False, reason: str = ""):
 	actor = interaction.user
 	
-	if (actor.id in stolen_nukes and stolen_nukes[actor] >= getTime()):
-		await interaction.response.send_message(f"Your nukes were stolen and you cannot nuke anyone for {formatTime(stolen_nukes[actor] - getTime())}!", ephemeral=True)
+	if (actor.id in stolen_nukes and stolen_nukes[actor.id] >= getTime()):
+		await interaction.response.send_message(f"Your nukes were stolen and you cannot nuke anyone for {formatTime(stolen_nukes[actor.id] - getTime())}!", ephemeral=True)
 		return
 	
 	msgtext = ""
