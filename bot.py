@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import discord
 import json
@@ -7,6 +8,7 @@ import pickle
 import random
 import traceback
 from pathlib import Path
+from io import BytesIO
 
 ## Bot config loader
 CACHED_CONFIG = None
@@ -282,6 +284,37 @@ async def list_properties(interaction: discord.Interaction, prefix: str = ""):
 			msg += f"* {k} = ({type(v).__name__}) {repr(v)}\n"
 	
 	await interaction.response.send_message(msg if msg else "*No properties*", ephemeral=True)
+
+# @client.tree.command(name="emoji-url", description="Get the URL of an emoji")
+# @discord.app_commands.describe(image="Emoji to get URL of")
+# async def emoji_url(interaction: discord.Interaction, msg: discord.Message):
+# 	await interaction.response.send_message(msg.content)
+
+@client.tree.command(name="frenchify", description="Add a French flag pattern to a Tails image, though it may fail epically")
+@discord.app_commands.describe(attachment="Image to frenchify", hue_range="Range of hues to flagify as two integers separated by a space (default: 20 50, more red: 0 40, more yellow: 30 70)", brightness="Roughly speaking, the maxium brightness for a pixel to be considered part of Tails' fur. Increasing may help with very yellow Tails images (default: 140)", minimum_saturation="Roughly speaking, this the minimum saturation for a pixel to be considered part of Tails (default: 25)")
+async def frenchify(interaction: discord.Interaction, attachment: discord.Attachment, hue_range: str = "20 50", brightness: int = 140, minimum_saturation: int = 25):
+	import dntt_image
+	
+	await interaction.response.defer(thinking=True)
+	
+	async def respond(msg=None, file=None):
+		o = await interaction.original_response()
+		await o.edit(content=msg, attachments=[file])
+	
+	try:
+		image_data = BytesIO()
+		await attachment.save(image_data)
+		result_data = dntt_image.apply_pattern(
+			image_data,
+			brightness,
+			minimum_saturation,
+			hue_range=[int(x) for x in hue_range.split()]
+		)
+		
+		await respond(f"Image frenchified!", discord.File(result_data, "frenchified.png"))
+	except:
+		traceback.print_exc()
+		await respond("Whoops, something went wrong. Try again later.")
 
 I_AM_REPLACEMENTS = {
 	"im": "hi",
