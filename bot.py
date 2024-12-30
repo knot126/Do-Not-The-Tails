@@ -10,6 +10,7 @@ import traceback
 from pathlib import Path
 from io import BytesIO
 from typing import List
+import re
 
 ## Bot config loader
 CACHED_CONFIG = None
@@ -327,6 +328,10 @@ async def flagify_tails_image(interaction: discord.Interaction, attachment: disc
 	try:
 		if flag not in dntt_image.get_flag_name_list():
 			await respond(f"Whoops! Flag was not one of {', '.join(dntt_image.get_flag_name_list())}.")
+			return
+		
+		if re.fullmatch(r"[0-9]+ [0-9]+", hue_range) == None:
+			await respond("Whoops! The hue value should be two numbers separated by a space.")
 			return
 		
 		image_data = BytesIO()
