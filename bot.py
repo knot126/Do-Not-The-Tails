@@ -330,8 +330,8 @@ async def flagify_tails_image(interaction: discord.Interaction, attachment: disc
 			await respond(f"Whoops! Flag was not one of {', '.join(dntt_image.get_flag_name_list())}.")
 			return
 		
-		if re.fullmatch(r"[0-9]+ [0-9]+", hue_range) == None:
-			await respond("Whoops! The hue value should be two numbers separated by a space.")
+		if re.fullmatch(r"\-?[0-9]+ [0-9]+", hue_range) == None:
+			await respond("Whoops! The hue value should be two numbers separated by a space. The first representes the minimum hue to that will be considered part of Tails, and the second the maximum. The first number can be negative to include a range of hues that overlap the 0/360 degree boundary.\n\nExamples:\n* `20 50` - The default, would select mostly amber and orange-yellow hues\n* `-20 40` - Would select primarily red hues with some pinks and oranges.\n* `30 70` - Would select more yellowish hues")
 			return
 		
 		image_data = BytesIO()
@@ -344,7 +344,7 @@ async def flagify_tails_image(interaction: discord.Interaction, attachment: disc
 			stripes=flag,
 		)
 		
-		await respond(f"Image {flag}ified!", discord.File(result_data, "frenchified.png"))
+		await respond(f"Image {flag}ified!", discord.File(result_data, f"{flag}ified.png"))
 	except:
 		traceback.print_exc()
 		await respond("Whoops, something went wrong. Try again later.")

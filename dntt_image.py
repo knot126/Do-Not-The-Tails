@@ -140,15 +140,20 @@ def apply_pattern(fp, max_brightness=140, near_grey_th=25, hue_range=(20, 50), s
 	
 	getindex = lambda x, y, i: 4 * (y * img.width + x) + i
 	
+	# TODO: Maybe have the option to disable grey(lightness?) checking?
 	def isneargreys(r, g, b):
 		return abs(r - g) <= near_grey_th and abs(g - b) <= near_grey_th and abs(r - b) <= near_grey_th
 	
+	# TODO: Maybe redo this to a brightness range?
 	def istoobright(r, g, b):
 		return min(r, g, b) >= max_brightness
 	
-	def isCand(r, g, b):
+	def isgoodhue(r, g, b):
 		hue = gethue(r, g, b)
-		return (hue_range[0] <= hue <= hue_range[1]) and not isneargreys(r,g,b) and not istoobright(r,g,b)
+		return (hue_range[0] <= hue <= hue_range[1]) or (360 + hue_range[0]) <= hue <= (360 + hue_range[1])
+	
+	def isCand(r, g, b):
+		return isgoodhue(r, g, b) and not isneargreys(r,g,b) and not istoobright(r,g,b)
 	
 	# First and last pixel x coord where a pixel to recolour was found
 	minW = img.width
