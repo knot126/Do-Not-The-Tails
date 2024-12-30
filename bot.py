@@ -302,15 +302,15 @@ async def flagify_flag_list(interaction: discord.Interaction, current: str):
 	
 	return lst
 
-@client.tree.command(name="frenchify", description="Add a French flag pattern to a Tails image, though it may fail epically")
+@client.tree.command(name="flagify-tails-image", description="Add a French flag pattern to a Tails image, though it may fail epically")
 @discord.app_commands.describe(
-	attachment="Image to frenchify",
+	attachment="Image to attempt to flagify",
 	hue_range="Range of hues to flagify as two integers separated by a space (default: 20 50, more red: 0 40, more yellow: 30 70)",
 	brightness="Roughly speaking, the maxium brightness for a pixel to be considered part of Tails' fur. Increasing may help with very yellow Tails images (default: 140)",
 	minimum_saturation="Roughly speaking, this the minimum saturation for a pixel to be considered part of Tails (default: 25)"
 )
 @discord.app_commands.autocomplete(flag=flagify_flag_list)
-async def frenchify(interaction: discord.Interaction, attachment: discord.Attachment, flag: str = "french", hue_range: str = "20 50", brightness: int = 140, minimum_saturation: int = 25):
+async def flagify_tails_image(interaction: discord.Interaction, attachment: discord.Attachment, flag: str = "french", hue_range: str = "20 50", brightness: int = 140, minimum_saturation: int = 25):
 	import dntt_image
 	
 	await interaction.response.defer(thinking=True)
