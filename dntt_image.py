@@ -183,7 +183,7 @@ def apply_pattern(fp, max_brightness=140, near_grey_th=25, hue_range=(20, 50), s
 			r, g, b = bs[getindex(x, y, 0)], bs[getindex(x, y, 1)], bs[getindex(x, y, 2)]
 			
 			if isCand(r, g, b):
-				w = max(r, g, b) - min(r, g, b)
+				w = max(r, g, b)# - min(r, g, b)
 				c = stripes[getBandIndexY(y) if horizontal else getBandIndexX(x)]
 				
 				r = (c[0] * w) // 255

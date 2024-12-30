@@ -9,6 +9,7 @@ import random
 import traceback
 from pathlib import Path
 from io import BytesIO
+from typing import List
 
 ## Bot config loader
 CACHED_CONFIG = None
@@ -290,28 +291,55 @@ async def list_properties(interaction: discord.Interaction, prefix: str = ""):
 # async def emoji_url(interaction: discord.Interaction, msg: discord.Message):
 # 	await interaction.response.send_message(msg.content)
 
+async def flagify_flag_list(interaction: discord.Interaction, current: str):
+	import dntt_image
+	
+	lst = []
+	
+	for flag_name in dntt_image.get_flag_name_list():
+		if (current.lower() in flag_name.lower()):
+			lst.append(discord.app_commands.Choice(name=flag_name, value=flag_name))
+	
+	return lst
+
 @client.tree.command(name="frenchify", description="Add a French flag pattern to a Tails image, though it may fail epically")
-@discord.app_commands.describe(attachment="Image to frenchify", hue_range="Range of hues to flagify as two integers separated by a space (default: 20 50, more red: 0 40, more yellow: 30 70)", brightness="Roughly speaking, the maxium brightness for a pixel to be considered part of Tails' fur. Increasing may help with very yellow Tails images (default: 140)", minimum_saturation="Roughly speaking, this the minimum saturation for a pixel to be considered part of Tails (default: 25)")
-async def frenchify(interaction: discord.Interaction, attachment: discord.Attachment, hue_range: str = "20 50", brightness: int = 140, minimum_saturation: int = 25):
+@discord.app_commands.describe(
+	attachment="Image to frenchify",
+	hue_range="Range of hues to flagify as two integers separated by a space (default: 20 50, more red: 0 40, more yellow: 30 70)",
+	brightness="Roughly speaking, the maxium brightness for a pixel to be considered part of Tails' fur. Increasing may help with very yellow Tails images (default: 140)",
+	minimum_saturation="Roughly speaking, this the minimum saturation for a pixel to be considered part of Tails (default: 25)"
+)
+@discord.app_commands.autocomplete(flag=flagify_flag_list)
+async def frenchify(interaction: discord.Interaction, attachment: discord.Attachment, flag: str = "french", hue_range: str = "20 50", brightness: int = 140, minimum_saturation: int = 25):
 	import dntt_image
 	
 	await interaction.response.defer(thinking=True)
 	
 	async def respond(msg=None, file=None):
 		o = await interaction.original_response()
-		await o.edit(content=msg, attachments=[file])
+		# HACK: It will _not_ work with something like [file] if file else None,
+		# for some stupid reason beyond my conception.
+		if file == None:
+			await o.edit(content=msg)
+		else:
+			await o.edit(content=msg, attachments=[file])
 	
 	try:
+		if flag not in dntt_image.get_flag_name_list():
+			await respond(f"Whoops! Flag was not one of {', '.join(dntt_image.get_flag_name_list())}.")
+			return
+		
 		image_data = BytesIO()
 		await attachment.save(image_data)
 		result_data = dntt_image.apply_pattern(
 			image_data,
 			brightness,
 			minimum_saturation,
-			hue_range=[int(x) for x in hue_range.split()]
+			hue_range=[int(x) for x in hue_range.split()],
+			stripes=flag,
 		)
 		
-		await respond(f"Image frenchified!", discord.File(result_data, "frenchified.png"))
+		await respond(f"Image {flag}ified!", discord.File(result_data, "frenchified.png"))
 	except:
 		traceback.print_exc()
 		await respond("Whoops, something went wrong. Try again later.")
