@@ -129,6 +129,9 @@ def gethue(r, g, b):
 	
 	return 60 * h if h >= 0.0 else 360 + (60 * h)
 
+def getlightness(r, g, b):
+	return 0.5 * (max(r, g, b) + min(r, g, b)) * (100/255)
+
 def getsaturation(r, g, b):
 	# not actually saturation ;p
 	return (max(r, g, b) - min(r, g, b)) * (100/255)
@@ -159,6 +162,7 @@ def apply_pattern(fp, value_range=(0, 100), saturation_range=(40, 100), hue_rang
 	
 	def isgoodsat(r, g, b):
 		return saturation_range[0] <= getsaturation(r, g, b) <= saturation_range[1]
+		# return saturation_range[0] <= getlightness(r, g, b) <= saturation_range[1]
 	
 	def isgoodhue(r, g, b):
 		hue = gethue(r, g, b)
