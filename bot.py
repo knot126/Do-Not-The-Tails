@@ -306,12 +306,12 @@ async def flagify_flag_list(interaction: discord.Interaction, current: str):
 @client.tree.command(name="flagify-tails-image", description="Add a French flag pattern to a Tails image, though it may fail epically")
 @discord.app_commands.describe(
 	attachment="Image to attempt to flagify",
+	value_range="The value of pixels to flagify (default: 0 100)",
+	saturation_range="The saturation of pixels to flagify (default: 40 100)",
 	hue_range="Range of hues to flagify as two integers separated by a space (default: 20 50, more red: 0 40, more yellow: 30 70)",
-	brightness="Roughly speaking, the maxium brightness for a pixel to be considered part of Tails' fur. Increasing may help with very yellow Tails images (default: 140)",
-	minimum_saturation="Roughly speaking, this the minimum saturation for a pixel to be considered part of Tails (default: 25)"
 )
 @discord.app_commands.autocomplete(flag=flagify_flag_list)
-async def flagify_tails_image(interaction: discord.Interaction, attachment: discord.Attachment, flag: str = "french", hue_range: str = "20 50", brightness: int = 140, minimum_saturation: int = 25):
+async def flagify_tails_image(interaction: discord.Interaction, attachment: discord.Attachment, flag: str = "french", value_range: str = "0 100", saturation_range: str = "40 100", hue_range: str = "20 50"):
 	import dntt_image
 	
 	await interaction.response.defer(thinking=True)
@@ -330,6 +330,14 @@ async def flagify_tails_image(interaction: discord.Interaction, attachment: disc
 			await respond(f"Whoops! Flag was not one of {', '.join(dntt_image.get_flag_name_list())}.")
 			return
 		
+		if re.fullmatch(r"[0-9]+ [0-9]+", value_range) == None:
+			await respond("Whoops! The value range should be two integers seperated by a space.")
+			return
+		
+		if re.fullmatch(r"[0-9]+ [0-9]+", saturation_range) == None:
+			await respond("Whoops! The saturation range should be two integers seperated by a space.")
+			return
+		
 		if re.fullmatch(r"\-?[0-9]+ [0-9]+", hue_range) == None:
 			await respond("Whoops! The hue value should be two numbers separated by a space. The first representes the minimum hue to that will be considered part of Tails, and the second the maximum. The first number can be negative to include a range of hues that overlap the 0/360 degree boundary.\n\nExamples:\n* `20 50` - The default, would select mostly amber and orange-yellow hues\n* `-20 40` - Would select primarily red hues with some pinks and oranges.\n* `30 70` - Would select more yellowish hues")
 			return
@@ -338,8 +346,8 @@ async def flagify_tails_image(interaction: discord.Interaction, attachment: disc
 		await attachment.save(image_data)
 		result_data = dntt_image.apply_pattern(
 			image_data,
-			brightness,
-			minimum_saturation,
+			value_range=[int(x) for x in value_range.split()],
+			saturation_range=[int(x) for x in saturation_range.split()],
 			hue_range=[int(x) for x in hue_range.split()],
 			stripes=flag,
 		)
