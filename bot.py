@@ -7,6 +7,7 @@ import time
 import pickle
 import random
 import traceback
+import math
 from pathlib import Path
 from io import BytesIO
 from typing import List
@@ -17,14 +18,41 @@ CACHED_CONFIG = None
 SAVE_FILE = "NukeGame.pkl"
 ADMIN_USERS = [818564860484780083]
 DEFAULT_PROPS = {
+	"symbol": "€",
 	"nukeStealTime": 20,
 	"nukeStealCooldown": 180,
+	"nukeBuildCooldown": 15,
 	"nukeFailFreq": 0.01,
+	"initialPlayerNukes": 3,
+	"initialPlayerMoney": 1000,
+	"nukeBuildCost": 100,
+	"nukeHitReward": 120,
+	"nukeHitDamageTime": 10,
+	"workCooldown": 1200,
+	"minWorkProfit": 750,
+	"maxWorkProfit": 2750,
 	"dadJoke": True,
 	"dadJokeFreq": 0.01,
 	"dadJokeServers": [],
 	"admins": ADMIN_USERS,
 }
+
+WORK_MESSAGES = [
+	"build nukes for Mangey",
+	"build low quality weapons for GUN",
+	"rescue Mangey for Nijko",
+	"rescue Nine for Knot",
+	"help defeat the Chaos Council",
+	"attack Nine",
+	"attack Mangey",
+	"let Sails rent a room",
+	"sue Nine for copyright infringement",
+	"sell pirated blue-rays",
+	"defeat <@818564860484780083> in battle",
+	"win a Frenchness contest",
+	"tell 300 Microsoft engineers they've been fired",
+	"rob Bill Gates",
+]
 
 def getConfig(prop=None):
 	global CACHED_CONFIG
@@ -77,28 +105,82 @@ def evalListDiff(arr, cmddifflist, typ = int):
 				case "-" | "remove":
 					arr.remove(value)
 
+def formatMoney(amount):
+	return game.getProp("symbol") + str(amount)
+
+def getName(u, ping=False):
+	return f"<@{u.id}>" if ping else f"**{u.display_name}**"
+
 ## Game data and models
 class Player:
 	def __init__(self):
 		# These are the defaults
-		self.nukes = 3
+		self.nukes = game.getProp("initialPlayerNukes")
+		self.money = game.getProp("initialPlayerMoney")
+		self.points = 0
 		self.stolen_until = 0
 		self.steal_cooldown = 0
 		self.build_cooldown = 0
+		self.work_cooldown = 0
 	
-	def stealNukesFrom(self, count):
+	def spend(self, amount):
+		if self.money < amount:
+			return False
+		else:
+			self.money -= amount
+			return True
+	
+	def pay(self, amount):
+		self.money += amount
+		self.points += ((amount // 3) + random.randint(1, 9))
+		return self.money, self.points
+	
+	def getNukes(self):
+		return self.nukes
+	
+	def getMoney(self):
+		return formatMoney(self.money)
+	
+	def getPoints(self):
+		return "∆ " + str(self.points)
+	
+	def gotNukesStolen(self, count):
 		self.setCooldown("stolen_until", "nukeStealTime")
 		nukes_count = self.nukes
 		self.nukes = 0
 		return nukes_count
 	
-	def stowStolenNukes(self, count):
+	def stoleNukes(self, count):
 		self.setCooldown("steal_cooldown", "nukeStealCooldown")
 		self.nukes += count
 	
 	def buildNukes(self, count):
-		self.setCooldown("build_cooldown", "nukeBuildCooldown")
-		self.nukes += count
+		if self.spend(count * game.getProp("nukeBuildCost")):
+			self.setCooldown("build_cooldown", "nukeBuildCooldown")
+			self.nukes += count
+			return True
+		else:
+			return False
+	
+	def doWork(self):
+		self.setCooldown("work_cooldown", "workCooldown")
+		profit = random.randint(game.getProp("minWorkProfit"), game.getProp("maxWorkProfit"))
+		self.pay(profit)
+		return formatMoney(profit)
+	
+	def launchedNuke(self):
+		self.nukes -= 1
+	
+	def hitSomeone(self):
+		m = game.getProp("nukeHitReward")
+		self.pay(m)
+		return formatMoney(m)
+	
+	def wasHit(self):
+		pass
+	
+	def lostNuke(self):
+		pass
 	
 	def setCooldown(self, prop, conf_var):
 		"""
@@ -176,13 +258,16 @@ class Game:
 	
 	def save(self):
 		try:
+			os.rename(SAVE_FILE, f"{SAVE_FILE}.bak")
 			Path(SAVE_FILE).write_bytes(pickle.dumps(self.pack()))
 		except:
 			print("failed to save game")
 	
 	def load(self):
-		if os.path.isfile(SAVE_FILE):
+		try:
 			self.unpack(pickle.loads(Path(SAVE_FILE).read_bytes()))
+		except:
+			print("failed to load game")
 
 game = Game()
 
@@ -191,9 +276,6 @@ intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 client.tree = discord.app_commands.CommandTree(client)
-
-stolen_nukes = {}
-stolen_cooldown = {}
 
 @client.event
 async def on_ready():
@@ -207,19 +289,30 @@ async def on_ready():
 async def nuke(interaction: discord.Interaction, user: discord.User, wait: int = 0, ping: bool = False, reason: str = ""):
 	actor = interaction.user
 	
-	if (actor.id in stolen_nukes and stolen_nukes[actor.id] >= getTime()):
-		await interaction.response.send_message(f"Your nukes were stolen and you cannot nuke anyone for {formatTime(stolen_nukes[actor.id] - getTime())}!", ephemeral=True)
+	aggressor = game.getPlayer(actor.id)
+	victim = game.getPlayer(user.id)
+	
+	nuke_count = aggressor.getNukes()
+	
+	if nuke_count == 0:
+		await interaction.response.send_message(f"You don't have any nukes left. You can build more with `/build`.", ephemeral=True)
 		return
+	
+	if wait:
+		wait = min(wait, 300)
+		await interaction.response.send_message(f"Launched a nuke to **{user.display_name}** that should arrive in {formatTime(wait)}!")
+		await asyncio.sleep(wait)
 	
 	msgtext = ""
 	
-	def getname(u):
-		return f"<@{u.id}>" if ping else f"**{u.display_name}**"
+	aggressor.launchedNuke()
 	
 	if (random.random() < game.getProp("nukeFailFreq")):
-		msgtext = f"**Alert!** {getname(actor)} tried to nuke {getname(user)} but the nukes didn't work!"
+		msgtext = f"**Alert!** {getName(actor, ping)} tried to nuke {getName(user, ping)} but the nuke was lost!"
+		aggressor.lostNuke()
 	else:
-		msgtext = f"**Danger!** {getname(user)} has been nuked by {getname(actor)}!"
+		payment = aggressor.hitSomeone()
+		msgtext = f"**Danger!** {getName(actor, ping)} has nuked {getName(user, ping)} and has been paid {payment}!"
 	
 	if reason:
 		msgtext += f"\n**Reason:** {reason}"
@@ -227,35 +320,92 @@ async def nuke(interaction: discord.Interaction, user: discord.User, wait: int =
 	if wait == 0:
 		await interaction.response.send_message(msgtext)
 	else:
-		wait = min(wait, 300)
-		await interaction.response.send_message(f"Launched a nuke to **{user.display_name}** that should arrive in {formatTime(wait)}!")
-		await asyncio.sleep(wait)
 		await interaction.followup.send(msgtext)
 
-@client.tree.command(name="steal-nukes", description="Steal nukes from another user.")
-@discord.app_commands.describe(user="User to steal nukes from", ping="If the user should be pinged", reason="Reason for stealing this user's nukes")
-async def steal_nukes(interaction: discord.Interaction, user: discord.User, ping: bool = False, reason: str = ""):
-	target = user.id
+@client.tree.command(name="steal", description="Steal nukes from another player.")
+@discord.app_commands.describe(user="Player to steal nukes from", amount="Number of nukes to steal", ping="If the user should be pinged", reason="Reason for stealing this user's nukes")
+async def steal_nukes(interaction: discord.Interaction, user: discord.User, amount: int = 1, ping: bool = False, reason: str = ""):
 	actor = interaction.user.id
 	
-	if (actor in stolen_cooldown and stolen_cooldown[actor] >= getTime()):
-		await interaction.response.send_message(f"You've stolen nukes too recently to do it again. You can try again in {formatTime(stolen_cooldown[actor] - getTime())}.", ephemeral=True)
+	aggressor = game.getPlayer(actor)
+	victim = game.getPlayer(user.id)
+	
+	steal_cooldown = aggressor.getCooldown("steal_cooldown")
+	
+	if steal_cooldown:
+		await interaction.response.send_message(f"You've stolen nukes too recently to do it again. You can try again in {formatTime(steal_cooldown)}.", ephemeral=True)
 		return
 	
-	stolen_nukes[target] = getTime() + game.getProp("nukeStealTime")
-	stolen_cooldown[actor] = getTime() + game.getProp("nukeStealCooldown")
+	maxAmount = min(victim.getNukes(), amount)
 	
-	# If we just stole some nukes and have no nukes ourselves it makes sense
-	# that we should have nukes!
-	stolen_nukes[actor] = 0
+	if maxAmount == 0:
+		await interaction.response.send_message(f"This player does not have any nukes to steal.")
+		return
+	
+	stolenAmount = random.randint(1, maxAmount)
+	
+	aggressor.stoleNukes(stolenAmount)
+	victim.gotNukesStolen(stolenAmount)
 	
 	user_text = f"<@{user.id}>" if ping else f"**{user.display_name}**"
-	msgtext = f"Stole nukes from {user_text}! They won't be able to nuke for {formatTime(game.getProp('nukeStealTime'))}."
+	msgtext = f"You were able to steal {stolenAmount if stolenAmount != 1 else 'a'} nuke{'s' if stolenAmount != 1 else ''} from {user_text}!"
 	
 	if reason:
 		msgtext += f"\n**Reason:** {reason}"
 	
 	await interaction.response.send_message(msgtext)
+	
+	game.save()
+
+@client.tree.command(name="stats", description="Get stats about yourself.")
+async def player_stats(interaction: discord.Interaction):
+	player = game.getPlayer(interaction.user.id)
+	
+	nukes = player.getNukes()
+	money = player.getMoney()
+	points = player.getPoints()
+	
+	await interaction.response.send_message(f"Stats for **{interaction.user.display_name}**:\n* Nukes: {nukes}\n* Money: {money}\n* Points: {points}")
+
+@client.tree.command(name="work", description="Do some work to gain money.")
+async def player_work(interaction: discord.Interaction):
+	player = game.getPlayer(interaction.user.id)
+	
+	work_cooldown = player.getCooldown("work_cooldown")
+	
+	if work_cooldown:
+		await interaction.response.send_message(f"You can't work right now. You can work again in {formatTime(work_cooldown)}.", ephemeral=True)
+		return
+	
+	profit = player.doWork()
+	
+	await interaction.response.send_message(f"You {random.choice(WORK_MESSAGES)} and profit {profit}!")
+	
+	game.save()
+
+@client.tree.command(name="build", description="Spend money to build more nukes.")
+@discord.app_commands.describe(amount="Number of nukes to build")
+async def player_build(interaction: discord.Interaction, amount: int = 1):
+	player = game.getPlayer(interaction.user.id)
+	
+	build_cooldown = player.getCooldown("build_cooldown")
+	
+	if build_cooldown:
+		await interaction.response.send_message(f"You've built nukes too recently to do it again. You can build more nukes in {formatTime(build_cooldown)}.", ephemeral=True)
+		return
+	
+	didBuild = player.buildNukes(amount)
+	
+	if didBuild:
+		await interaction.response.send_message(f"Built {amount} nuke(s).", ephemeral=True)
+		game.save()
+	else:
+		await interaction.response.send_message(f"You don't have enough money to build that many nukes. You can `/work` to gain money if you're out.", ephemeral=True)
+
+
+
+
+### ADMIN STUFF ###
 
 @client.tree.command(name="set-property", description="Set game property.")
 @discord.app_commands.describe(property="Name of property to set", value="Value to set property to")
