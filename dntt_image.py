@@ -229,7 +229,7 @@ def _main():
 		description="RoboTails image manipulation",
 	)
 	args.add_argument('filename')
-	args.add_argument('-P', '--pattern', help=", ".join(get_flag_name_list()), default="french")
+	args.add_argument('-P', '--pattern', help=", ".join(get_flag_name_list()) + ", *", default="french")
 	args.add_argument('-H', '--hue', help="min,max", default="10,60")
 	args.add_argument('-S', '--sat', help="min,max", default="40,100")
 	args.add_argument('-V', '--val', help="min,max", default="0,100")
@@ -237,15 +237,18 @@ def _main():
 	
 	def toRange(s): return [float(x) for x in s.split(",")]
 	
-	fp = apply_pattern(
-		BytesIO(pathlib.Path(args.filename).read_bytes()),
-		stripes=args.pattern,
-		value_range=toRange(args.val),
-		saturation_range=toRange(args.sat),
-		hue_range=toRange(args.hue),
-	)
+	patterns = [args.pattern] if args.pattern != "*" else NAMED_STRIPES.keys()
 	
-	pathlib.Path(args.filename + "-output.png").write_bytes(fp.getbuffer())
+	for pattern in patterns:
+		fp = apply_pattern(
+			BytesIO(pathlib.Path(args.filename).read_bytes()),
+			stripes=pattern,
+			value_range=toRange(args.val),
+			saturation_range=toRange(args.sat),
+			hue_range=toRange(args.hue),
+		)
+		
+		pathlib.Path(args.filename[:-4] + f"{pattern.title()}.png").write_bytes(fp.getbuffer())
 
 if __name__ == "__main__":
 	_main()

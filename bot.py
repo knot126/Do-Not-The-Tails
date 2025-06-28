@@ -21,6 +21,7 @@ DEFAULT_PROPS = {
 	"symbol": "€",
 	"nukeStealTime": 20,
 	"nukeStealCooldown": 180,
+	"nukeStealLimit": 3,
 	"nukeBuildCooldown": 15,
 	"nukeFailFreq": 0.01,
 	"initialPlayerNukes": 3,
@@ -54,6 +55,8 @@ WORK_MESSAGES = [
 	"rob Bill Gates",
 ]
 
+MESSAGES_JSON = "messages.json"
+
 def getConfig(prop=None):
 	global CACHED_CONFIG
 	
@@ -62,6 +65,29 @@ def getConfig(prop=None):
 	else:
 		CACHED_CONFIG = json.loads(Path("config.json").read_text())
 		return CACHED_CONFIG[prop] if prop else CACHED_CONFIG
+
+def loadJson(name):
+	return json.loads(Path(name).read_text())
+
+def saveJson(name, data):
+	Path(name).write_text(json.dumps(data))
+
+def getMessage():
+	return random.choice(loadJson(MESSAGES_JSON))
+
+def addMessage(msg):
+	msgs = loadJson(MESSAGES_JSON)
+	msgs.append(msg.strip())
+	saveJson(MESSAGES_JSON, msgs)
+
+def removeMessage(msg):
+	try:
+		msgs = loadJson(MESSAGES_JSON)
+		msgs.remove(msg.strip())
+		saveJson(MESSAGES_JSON, msgs)
+		return True
+	except ValueError:
+		return False
 
 ## Utils
 def formatTime(t):
@@ -336,6 +362,10 @@ async def steal_nukes(interaction: discord.Interaction, user: discord.User, amou
 		await interaction.response.send_message(f"You've stolen nukes too recently to do it again. You can try again in {formatTime(steal_cooldown)}.", ephemeral=True)
 		return
 	
+	if amount > game.getProp("nukeStealLimit"):
+		await interaction.response.send_message(f"You can only steal up to {game.getProp('nukeStealLimit')} nukes at once.", ephemeral=True)
+		return
+	
 	maxAmount = min(victim.getNukes(), amount)
 	
 	if maxAmount == 0:
@@ -379,7 +409,7 @@ async def player_work(interaction: discord.Interaction):
 	
 	profit = player.doWork()
 	
-	await interaction.response.send_message(f"You {random.choice(WORK_MESSAGES)} and profit {profit}!")
+	await interaction.response.send_message(f"You {getMessage()} and profit {profit}!")
 	
 	game.save()
 
@@ -436,6 +466,40 @@ async def list_properties(interaction: discord.Interaction, prefix: str = ""):
 			msg += f"* {k} = ({type(v).__name__}) {repr(v)}\n"
 	
 	await interaction.response.send_message(msg if msg else "*No properties*", ephemeral=True)
+
+@client.tree.command(name="add-message", description="Add a message for /work.")
+@discord.app_commands.describe(content="Content of the message")
+async def add_message(interaction: discord.Interaction, content: str):
+	if (interaction.user.id not in game.getProp("admins")):
+		await interaction.response.send_message(f"You are not the game master and cannot add messages.", ephemeral=True)
+		return
+	
+	addMessage(content)
+	
+	await interaction.response.send_message(f"Added the message `{content}`!", ephemeral=True)
+
+@client.tree.command(name="remove-message", description="Remove a message for /work.")
+@discord.app_commands.describe(content="Content of the message")
+async def remove_message(interaction: discord.Interaction, content: str):
+	if (interaction.user.id not in game.getProp("admins")):
+		await interaction.response.send_message(f"You are not the game master and cannot remove messages.", ephemeral=True)
+		return
+	
+	await interaction.response.send_message(f"Removed message `{content}`!" if removeMessage(content) else f"Could not find message matching `{content}`. Make sure you've typed it correctly (including exact same capitialisation and spacing).", ephemeral=True)
+
+@client.tree.command(name="list-messages", description="List messages for /work.")
+async def remove_message(interaction: discord.Interaction):
+	if (interaction.user.id not in game.getProp("admins")):
+		await interaction.response.send_message(f"You are not the game master and cannot list out messages.", ephemeral=True)
+		return
+	
+	msgs = loadJson(MESSAGES_JSON)
+	resp = f"Current messages can can appear with `/work` ({len(msgs)}):\n"
+	
+	for text in msgs:
+		resp += f" * `{text}`\n"
+	
+	await interaction.response.send_message(resp, ephemeral=True)
 
 # @client.tree.command(name="emoji-url", description="Get the URL of an emoji")
 # @discord.app_commands.describe(image="Emoji to get URL of")
