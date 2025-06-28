@@ -19,6 +19,7 @@ SAVE_FILE = "NukeGame.pkl"
 ADMIN_USERS = [818564860484780083]
 DEFAULT_PROPS = {
 	"symbol": "€",
+	"nukeCooldown": 10,
 	"nukeStealTime": 20,
 	"nukeStealCooldown": 180,
 	"nukeStealLimit": 3,
@@ -37,23 +38,6 @@ DEFAULT_PROPS = {
 	"dadJokeServers": [],
 	"admins": ADMIN_USERS,
 }
-
-WORK_MESSAGES = [
-	"build nukes for Mangey",
-	"build low quality weapons for GUN",
-	"rescue Mangey for Nijko",
-	"rescue Nine for Knot",
-	"help defeat the Chaos Council",
-	"attack Nine",
-	"attack Mangey",
-	"let Sails rent a room",
-	"sue Nine for copyright infringement",
-	"sell pirated blue-rays",
-	"defeat <@818564860484780083> in battle",
-	"win a Frenchness contest",
-	"tell 300 Microsoft engineers they've been fired",
-	"rob Bill Gates",
-]
 
 MESSAGES_JSON = "messages.json"
 
@@ -145,6 +129,7 @@ class Player:
 		self.money = game.getProp("initialPlayerMoney")
 		self.points = 0
 		self.stolen_until = 0
+		self.nuke_cooldown = 0
 		self.steal_cooldown = 0
 		self.build_cooldown = 0
 		self.work_cooldown = 0
@@ -323,6 +308,14 @@ async def nuke(interaction: discord.Interaction, user: discord.User, wait: int =
 	if nuke_count == 0:
 		await interaction.response.send_message(f"You don't have any nukes left. You can build more with `/build`.", ephemeral=True)
 		return
+	
+	nuke_cooldown = aggressor.getCooldown("nuke_cooldown")
+	
+	if nuke_cooldown:
+		await interaction.response.send_message(f"You've nuked too recently to do it again. You can try again in {formatTime(nuke_cooldown)}.", ephemeral=True)
+		return
+	
+	aggressor.setCooldown("nuke_cooldown", "nukeCooldown")
 	
 	if wait:
 		wait = min(wait, 300)
