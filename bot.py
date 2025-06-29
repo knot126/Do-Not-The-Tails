@@ -156,10 +156,8 @@ class Player:
 		return "∆ " + str(self.points)
 	
 	def gotNukesStolen(self, count):
-		self.setCooldown("stolen_until", "nukeStealTime")
-		nukes_count = self.nukes
-		self.nukes = 0
-		return nukes_count
+		# self.setCooldown("stolen_until", "nukeStealTime")
+		self.nukes = max(0, self.nukes - count)
 	
 	def stoleNukes(self, count):
 		self.setCooldown("steal_cooldown", "nukeStealCooldown")
