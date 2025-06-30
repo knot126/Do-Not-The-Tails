@@ -11,6 +11,7 @@ import math
 from pathlib import Path
 from io import BytesIO
 from typing import List
+from datetime import datetime, timezone
 import re
 
 ## Bot config loader
@@ -49,6 +50,16 @@ def getConfig(prop=None):
 	else:
 		CACHED_CONFIG = json.loads(Path("config.json").read_text())
 		return CACHED_CONFIG[prop] if prop else CACHED_CONFIG
+
+def log(text):
+	try:
+		with open("game_events.log", "a") as f:
+			f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {text.replace('\n', '\\n')}\n")
+	except:
+		print("Logging error!!")
+
+def uidstr(user):
+	return f"{user.id} ({user.display_name})"
 
 def loadJson(name):
 	return json.loads(Path(name).read_text())
@@ -330,6 +341,7 @@ async def nuke(interaction: discord.Interaction, user: discord.User, wait: int =
 	if wait:
 		wait = min(wait, 300)
 		await interaction.response.send_message(f"Launched a nuke to **{user.display_name}** that should arrive in {formatTime(wait)}!")
+		log(f"launched-nuke-await guild:{interaction.guild_id} channel:{interaction.channel_id} from:{uidstr(actor)} to:{uidstr(user)}")
 		await asyncio.sleep(wait)
 	
 	msgtext = ""
@@ -339,9 +351,11 @@ async def nuke(interaction: discord.Interaction, user: discord.User, wait: int =
 	if (random.random() < game.getProp("nukeFailFreq")):
 		msgtext = f"**Alert!** {getName(actor, ping)} tried to nuke {getName(user, ping)} but the nuke was lost!"
 		aggressor.lostNuke()
+		log(f"nuke-lost guild:{interaction.guild_id} channel:{interaction.channel_id} from:{uidstr(actor)} to:{uidstr(user)}")
 	else:
 		payment = aggressor.hitSomeone()
 		msgtext = f"**Danger!** {getName(actor, ping)} has nuked {getName(user, ping)} and has been paid {payment}!"
+		log(f"nuke-launched guild:{interaction.guild_id} channel:{interaction.channel_id} from:{uidstr(actor)} to:{uidstr(user)}")
 	
 	if reason:
 		msgtext += f"\n**Reason:** {reason}"
@@ -389,6 +403,8 @@ async def steal_nukes(interaction: discord.Interaction, user: discord.User, amou
 	
 	await interaction.response.send_message(msgtext)
 	
+	log(f"nukes-stolen guild:{interaction.guild_id} channel:{interaction.channel_id} by:{uidstr(interaction.user)} from:{uidstr(user)} count:{amount} real-count:{stolenAmount}")
+	
 	game.save()
 
 @client.tree.command(name="stats", description="Get stats about yourself or another player.")
@@ -418,6 +434,8 @@ async def player_work(interaction: discord.Interaction):
 	
 	await interaction.response.send_message(f"You {getMessage()} and profit {profit}!")
 	
+	log(f"work guild:{interaction.guild_id} channel:{interaction.channel_id} whom:{uidstr(interaction.user)}")
+	
 	game.save()
 
 @client.tree.command(name="build", description="Spend money to build more nukes.")
@@ -436,6 +454,7 @@ async def player_build(interaction: discord.Interaction, amount: int = 1):
 	
 	if didBuild:
 		await interaction.response.send_message(f"Built {amount} nuke(s).", ephemeral=True)
+		log(f"build-nukes guild:{interaction.guild_id} channel:{interaction.channel_id} from:{uidstr(interaction.user)} count:{amount}")
 		game.save()
 	else:
 		await interaction.response.send_message(f"You don't have enough money to build that many nukes. You can `/work` to gain money if you're out.", ephemeral=True)
@@ -455,6 +474,7 @@ async def give_nukes(interaction: discord.Interaction, user: discord.User, amoun
 	player = game.getPlayer(user.id)
 	player.addFreeNukes(amount)
 	await interaction.response.send_message(f"Gave {amount} free nukes to {user.display_name}!")
+	log(f"nukes-blessed guild:{interaction.guild_id} channel:{interaction.channel_id} by:{uidstr(interaction.user)} to:{uidstr(user)} count:{amount}")
 	game.save()
 
 @client.tree.command(name="set-property", description="Set game property.")
