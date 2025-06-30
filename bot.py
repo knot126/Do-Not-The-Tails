@@ -141,9 +141,18 @@ class Player:
 			self.money -= amount
 			return True
 	
+	def givePoints(self, base):
+		self.points += ((base // 3) + random.randint(1, 9))
+	
+	def addFreeNukes(self, amount):
+		self.nukes += amount
+	
+	def addFreeMoney(self, amount):
+		self.money += amount
+	
 	def pay(self, amount):
 		self.money += amount
-		self.points += ((amount // 3) + random.randint(1, 9))
+		self.givePoints(amount)
 		return self.money, self.points
 	
 	def getNukes(self):
@@ -179,8 +188,10 @@ class Player:
 	
 	def launchedNuke(self):
 		self.nukes -= 1
+		self.givePoints(100)
 	
 	def hitSomeone(self):
+		self.givePoints(1000)
 		m = game.getProp("nukeHitReward")
 		self.pay(m)
 		return formatMoney(m)
@@ -295,6 +306,7 @@ async def on_ready():
 
 @client.tree.command(name="nuke", description="Nukes another user.")
 @discord.app_commands.describe(user="User to nuke", wait="Time to wait in seconds, max 300 (5min)", ping="If the user will be pinged", reason="Reason for nuking this user")
+@discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
 async def nuke(interaction: discord.Interaction, user: discord.User, wait: int = 0, ping: bool = False, reason: str = ""):
 	actor = interaction.user
 	
@@ -341,6 +353,7 @@ async def nuke(interaction: discord.Interaction, user: discord.User, wait: int =
 
 @client.tree.command(name="steal", description="Steal nukes from another player.")
 @discord.app_commands.describe(user="Player to steal nukes from", amount="Number of nukes to steal", ping="If the user should be pinged", reason="Reason for stealing this user's nukes")
+@discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
 async def steal_nukes(interaction: discord.Interaction, user: discord.User, amount: int = 1, ping: bool = False, reason: str = ""):
 	actor = interaction.user.id
 	
@@ -378,17 +391,20 @@ async def steal_nukes(interaction: discord.Interaction, user: discord.User, amou
 	
 	game.save()
 
-@client.tree.command(name="stats", description="Get stats about yourself.")
-async def player_stats(interaction: discord.Interaction):
-	player = game.getPlayer(interaction.user.id)
+@client.tree.command(name="stats", description="Get stats about yourself or another player.")
+async def player_stats(interaction: discord.Interaction, user: discord.User = None):
+	user = user or interaction.user
+	
+	player = game.getPlayer(user.id)
 	
 	nukes = player.getNukes()
 	money = player.getMoney()
 	points = player.getPoints()
 	
-	await interaction.response.send_message(f"Stats for **{interaction.user.display_name}**:\n* Nukes: {nukes}\n* Money: {money}\n* Points: {points}")
+	await interaction.response.send_message(f"Stats for **{user.display_name}**:\n* Nukes: {nukes}\n* Money: {money}\n* Points: {points}")
 
 @client.tree.command(name="work", description="Do some work to gain money.")
+@discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
 async def player_work(interaction: discord.Interaction):
 	player = game.getPlayer(interaction.user.id)
 	
@@ -406,6 +422,7 @@ async def player_work(interaction: discord.Interaction):
 
 @client.tree.command(name="build", description="Spend money to build more nukes.")
 @discord.app_commands.describe(amount="Number of nukes to build")
+@discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
 async def player_build(interaction: discord.Interaction, amount: int = 1):
 	player = game.getPlayer(interaction.user.id)
 	
@@ -427,6 +444,18 @@ async def player_build(interaction: discord.Interaction, amount: int = 1):
 
 
 ### ADMIN STUFF ###
+
+@client.tree.command(name="give-nukes", description="Give a player nukes :3")
+@discord.app_commands.describe(user="The player", amount="Number of nukes to give them")
+async def give_nukes(interaction: discord.Interaction, user: discord.User, amount: int):
+	if (interaction.user.id not in game.getProp("admins")):
+		await interaction.response.send_message(f"You are not the game master and cannot bestow others with nukes.", ephemeral=True)
+		return
+	
+	player = game.getPlayer(user.id)
+	player.addFreeNukes(amount)
+	await interaction.response.send_message(f"Gave {amount} free nukes to {user.display_name}!")
+	game.save()
 
 @client.tree.command(name="set-property", description="Set game property.")
 @discord.app_commands.describe(property="Name of property to set", value="Value to set property to")
@@ -479,7 +508,7 @@ async def remove_message(interaction: discord.Interaction, content: str):
 	await interaction.response.send_message(f"Removed message `{content}`!" if removeMessage(content) else f"Could not find message matching `{content}`. Make sure you've typed it correctly (including exact same capitialisation and spacing).", ephemeral=True)
 
 @client.tree.command(name="list-messages", description="List messages for /work.")
-async def remove_message(interaction: discord.Interaction):
+async def list_message(interaction: discord.Interaction):
 	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot list out messages.", ephemeral=True)
 		return
