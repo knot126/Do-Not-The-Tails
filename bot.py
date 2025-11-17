@@ -290,9 +290,13 @@ class Game:
 	
 	def save(self):
 		try:
-			os.rename(SAVE_FILE, f"{SAVE_FILE}.bak")
+			try:
+				os.rename(SAVE_FILE, f"{SAVE_FILE}.bak")
+			except:
+				pass
 			Path(SAVE_FILE).write_bytes(pickle.dumps(self.pack()))
 		except:
+			traceback.print_exc()
 			print("failed to save game")
 	
 	def load(self):
