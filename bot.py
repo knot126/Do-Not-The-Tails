@@ -617,6 +617,8 @@ async def flagify_tails_image(interaction: discord.Interaction, attachment: disc
 		)
 		
 		await respond(f"Image {flag}ified!", discord.File(result_data, f"{flag}ified.png"))
+	except ZeroDivisionError:
+		await respond("There were no Tails coloured pixels detected in your image. Try using the hue_range argument to adjust the range of colours.\n\n* If Tails is more red, try setting huge range to `0 40`.\n* If Tails is more yellow, try setting hue range to `30 60`.")
 	except:
 		traceback.print_exc()
 		await respond("Whoops, something went wrong. Try again later.")
