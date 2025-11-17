@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from PIL import Image
 from io import BytesIO
+import json
 
 NAMED_STRIPES = {
 	"french": {
@@ -8,6 +9,14 @@ NAMED_STRIPES = {
 			(0, 0, 235),
 			(255, 255, 255),
 			(235, 0, 0),
+		),
+		"horizontal": False,
+	},
+	"italian": {
+		"stripes": (
+			(0, 146, 70),
+			(255, 255, 255),
+			(206, 43, 55)
 		),
 		"horizontal": False,
 	},
@@ -101,6 +110,23 @@ NAMED_STRIPES = {
 		),
 	}
 }
+
+def hex2tuple(s):
+	if type(s) == tuple:
+		return s
+	else:
+		if s.startswith("#"):
+			if len(s) == 4 or len(s) == 5:
+				return int((2 * s[1]), 16), int((2 * s[2]), 16), int((2 * s[3]), 16)
+			elif len(s) == 7 or len(s) == 9:
+				return int(s[1:3], 16), int(s[3:5], 16), int(s[5:7], 16)
+			else:
+				return (128, 128, 128)
+		else:
+			return (128, 128, 128)
+
+def parseHexList(hl):
+	return [hex2tuple(x) for x in hl.split()]
 
 def get_flag_name_list():
 	return NAMED_STRIPES.keys()
