@@ -20,6 +20,15 @@ NAMED_STRIPES = {
 		),
 		"horizontal": False,
 	},
+	"palestine": {
+		"stripes": (
+			(0, 0, 0),
+			(255, 255, 255),
+			(0x00, 0x97, 0x36),
+		),
+		"triangle": True,
+		"triangle_colour": (238, 42, 53),
+	},
 	"aroace": {
 		"stripes": (
 			(226, 140, 0),
@@ -166,7 +175,7 @@ def getvalue(r, g, b):
 	return max(r, g, b) * (100/255)
 
 # def apply_pattern(fp, max_brightness=140, near_grey_th=25, hue_range=(20, 50), stripes="french", horizontal=None):
-def apply_pattern(fp, value_range=(0, 100), saturation_range=(40, 100), hue_range=(10, 60), stripes="french", horizontal=None):
+def apply_pattern(fp, value_range=(0, 100), saturation_range=(40, 100), hue_range=(10, 60), stripes="french", horizontal=None, triangle=None, triangle_colour=None):
 	"""
 	Apply a basic striped flag pattern to an image of Tails. Works best with
 	flat and cell shaded images.
@@ -178,6 +187,8 @@ def apply_pattern(fp, value_range=(0, 100), saturation_range=(40, 100), hue_rang
 	
 	if type(stripes) not in (list, tuple):
 		horizontal = horizontal if horizontal != None else NAMED_STRIPES[stripes].get("horizontal", True)
+		triangle = triangle if triangle != None else NAMED_STRIPES[stripes].get("triangle", False)
+		triangle_colour = triangle_colour if triangle_colour != None else NAMED_STRIPES[stripes].get("triangle_colour", (0, 0, 0))
 		stripes = NAMED_STRIPES[stripes]["stripes"]
 	
 	getindex = lambda x, y, i: 4 * (y * img.width + x) + i
@@ -224,6 +235,9 @@ def apply_pattern(fp, value_range=(0, 100), saturation_range=(40, 100), hue_rang
 	getBandIndexX = lambda x: min(int(((x - minW) / (maxW - minW)) * len(stripes)), len(stripes) - 1)
 	getBandIndexY = lambda y: min(int(((y - minH) / (maxH - minH)) * len(stripes)), len(stripes) - 1)
 	
+	Width = maxW - minW
+	Height = maxH - minH
+	
 	for y in range(minH, maxH+1):
 		# for x in range(img.width):
 		for x in range(minW, maxW+1):
@@ -232,6 +246,11 @@ def apply_pattern(fp, value_range=(0, 100), saturation_range=(40, 100), hue_rang
 			if isCand(r, g, b):
 				w = max(r, g, b)# - min(r, g, b)
 				c = stripes[getBandIndexY(y) if horizontal else getBandIndexX(x)]
+				
+				if triangle:
+					if ((0.8 * (y - minH) / Height) > ((x - minW) / Width)):
+						if (0.8 * ((1.0 - ((y - minH) / Height))) > ((x - minW) / Width)):
+							c = (255, 0, 0)
 				
 				r = (c[0] * w) // 255
 				g = (c[1] * w) // 255
