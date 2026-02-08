@@ -14,6 +14,7 @@ from typing import List
 from datetime import datetime, timezone
 import re
 import dntt_image
+import flagifier_v2
 
 ## Bot config loader
 CACHED_CONFIG = None
@@ -546,11 +547,6 @@ async def list_message(interaction: discord.Interaction):
 	
 	await interaction.response.send_message(resp, ephemeral=True)
 
-# @client.tree.command(name="emoji-url", description="Get the URL of an emoji")
-# @discord.app_commands.describe(image="Emoji to get URL of")
-# async def emoji_url(interaction: discord.Interaction, msg: discord.Message):
-# 	await interaction.response.send_message(msg.content)
-
 async def flagify_flag_list(interaction: discord.Interaction, current: str):
 	lst = []
 	
@@ -560,7 +556,7 @@ async def flagify_flag_list(interaction: discord.Interaction, current: str):
 	
 	return lst
 
-@client.tree.command(name="flagify-tails-image", description="Colour a Tails image like a given pride or country flag")
+@client.tree.command(name="flagify-v1", description="Colour a Tails image like a given pride or country flag (old version)")
 @discord.app_commands.describe(
 	attachment="Image to flagify",
 	value_range="The value of pixels to flagify (default: 0 100)",
@@ -626,6 +622,75 @@ async def flagify_tails_image(interaction: discord.Interaction, attachment: disc
 	except:
 		traceback.print_exc()
 		await respond("Whoops, something went wrong. Try again later.")
+
+
+
+
+
+async def flagify_v2_get_flag_list(interaction: discord.Interaction, current: str):
+	lst = []
+	
+	for flag_name in flagifier_v2.get_flag_name_list():
+		if (current.lower() in flag_name.lower()):
+			lst.append(discord.app_commands.Choice(name=flag_name, value=flag_name))
+	
+	return lst
+
+@client.tree.command(name="flagify-v2", description="Try to make a \"pride Tails\" image from a given image and chosen flag")
+@discord.app_commands.describe(
+	attachment="Image to apply flag pattern to",
+	value_range="The value of pixels to flagify (default: between 0 and 100)",
+	saturation_range="The saturation of pixels to flagify (default: between 40 and 100)",
+	hue_range="Range of hues to flagify as two integers separated by a space (default: between 20 and 50, for example: more red: 0 40, more yellow: 30 70)"
+)
+@discord.app_commands.autocomplete(flag=flagify_v2_get_flag_list)
+async def flagify_v2(interaction: discord.Interaction, attachment: discord.Attachment, flag: str = "french", value_range: str = "0 100", saturation_range: str = "40 100", hue_range: str = "20 50"):
+	await interaction.response.defer(thinking=True)
+	
+	async def respond(msg=None, file=None):
+		o = await interaction.original_response()
+		# HACK: It will _not_ work with something like [file] if file else None,
+		# for some stupid reason beyond my conception.
+		if file == None:
+			await o.edit(content=msg)
+		else:
+			await o.edit(content=msg, attachments=[file])
+	
+	try:
+		if re.fullmatch(r"[0-9]+ [0-9]+", value_range) == None:
+			await respond("Whoops! The value range should be two integers seperated by a space.")
+			return
+		
+		if re.fullmatch(r"[0-9]+ [0-9]+", saturation_range) == None:
+			await respond("Whoops! The saturation range should be two integers seperated by a space.")
+			return
+		
+		if re.fullmatch(r"\-?[0-9]+ [0-9]+", hue_range) == None:
+			await respond("Whoops! The hue value should be two numbers separated by a space. The first represents the minimum hue to that will be considered part of Tails, and the second the maximum. The first number can be negative to include a range of hues that overlap the 0/360 degree boundary.\n\nExamples:\n* `20 50` - The default, would select mostly amber and orange-yellow hues\n* `-20 40` - Would select primarily red hues with some pinks and oranges.\n* `30 70` - Would select more yellowish hues")
+			return
+		
+		image_data = BytesIO()
+		await attachment.save(image_data)
+		
+		result_data = dntt_image.apply_pattern(
+			image_data,
+			value_range=[int(x) for x in value_range.split()],
+			saturation_range=[int(x) for x in saturation_range.split()],
+			hue_range=[int(x) for x in hue_range.split()],
+			flag_texture=flag,
+		)
+		
+		await respond(f"Applied flag pattern `{flag}` to image! If it doesn't look right, try exprimenting with different hue, saturation, and value parameters.", discord.File(result_data, f"{flag}ified.png"))
+	except flagifier_v2.FlagNotInNameListError:
+		await respond(f"The flag `{flag}` is not a known flag, sorry.")
+	except ZeroDivisionError:
+		await respond("There were no Tails coloured pixels detected in your image. Try using the hue_range argument to adjust the range of colours.\n\n* If Tails is more red, try setting huge range to `0 40`.\n* If Tails is more yellow, try setting hue range to `30 60`.")
+	except:
+		traceback.print_exc()
+		await respond("Whoops, something went wrong. Try again later.")
+
+
+
 
 I_AM_REPLACEMENTS = {
 	"im": "hi",
