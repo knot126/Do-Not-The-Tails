@@ -672,7 +672,7 @@ async def flagify_v2(interaction: discord.Interaction, attachment: discord.Attac
 		image_data = BytesIO()
 		await attachment.save(image_data)
 		
-		result_data = dntt_image.apply_pattern(
+		result_data = flagifier_v2.flagify(
 			image_data,
 			value_range=[int(x) for x in value_range.split()],
 			saturation_range=[int(x) for x in saturation_range.split()],
