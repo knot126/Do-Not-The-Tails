@@ -19,6 +19,7 @@ import flagifier_v2
 ## Bot config loader
 CACHED_CONFIG = None
 SAVE_FILE = "NukeGame.pkl"
+SAVE_FILE_JSON = "nuke_game.json"
 ADMIN_USERS = [818564860484780083]
 DEFAULT_PROPS = {
 	"symbol": "€",
@@ -386,6 +387,19 @@ class Game:
 		except:
 			traceback.print_exc()
 			print("failed to save game")
+		
+		self._save_json()
+	
+	def _save_json(self):
+		try:
+			try:
+				os.rename(SAVE_FILE_JSON, f"{SAVE_FILE_JSON}.bak")
+			except:
+				pass
+			Path(SAVE_FILE_JSON).write_text(json.dumps(self.pack(), indent=4))
+		except:
+			traceback.print_exc()
+			print("failed to save game (json)")
 	
 	def load(self):
 		try:
