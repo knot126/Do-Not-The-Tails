@@ -36,6 +36,9 @@ DEFAULT_PROPS = {
 	"workCooldown": 1200,
 	"minWorkProfit": 750,
 	"maxWorkProfit": 2750,
+	"workLossFreq": 0.2,
+	"minWorkLoss": 750,
+	"maxWorkLoss": 2750,
 	"dadJoke": True,
 	"dadJokeFreq": 0.01,
 	"dadJokeServers": [],
@@ -43,6 +46,7 @@ DEFAULT_PROPS = {
 }
 
 MESSAGES_JSON = "messages.json"
+NEW_MESSAGES_JSON = "new_messages.json"
 
 def getConfig(prop=None):
 	global CACHED_CONFIG
@@ -67,24 +71,89 @@ def loadJson(name):
 	return json.loads(Path(name).read_text())
 
 def saveJson(name, data):
-	Path(name).write_text(json.dumps(data))
+	Path(name).write_text(json.dumps(data, indent=4))
 
-def getMessage():
-	return random.choice(loadJson(MESSAGES_JSON))
+# def getMessage():
+# 	return random.choice(loadJson(MESSAGES_JSON))
+# 
+# def addMessage(msg):
+# 	msgs = loadJson(MESSAGES_JSON)
+# 	msgs.append(msg.strip())
+# 	saveJson(MESSAGES_JSON, msgs)
+# 
+# def removeMessage(msg):
+# 	try:
+# 		msgs = loadJson(MESSAGES_JSON)
+# 		msgs.remove(msg.strip())
+# 		saveJson(MESSAGES_JSON, msgs)
+# 		return True
+# 	except ValueError:
+# 		return False
 
-def addMessage(msg):
-	msgs = loadJson(MESSAGES_JSON)
-	msgs.append(msg.strip())
-	saveJson(MESSAGES_JSON, msgs)
+class NewMessages:
+	PICK_regex = re.compile(r"%PICK\([^\)]+\)%")
+	
+	def __init__(self, path):
+		self.path = path
+		
+		try:
+			self.data = loadJson(self.path)
+		except:
+			self.data = {}
+	
+	def _save(self):
+		saveJson(self.path, self.data)
+	
+	def add(self, category, message):
+		if category not in self.data:
+			self.data[category] = []
+		
+		self.data[category].append(message)
+		self._save()
+	
+	def remove(self, category, message):
+		try:
+			self.data[category].remove(message.strip())
+			self._save()
+			return True
+		except ValueError:
+			return False
+	
+	def list_for(self, category):
+		if category in self.data:
+			return self.data[category].copy()
+		else:
+			return []
+	
+	def list_categories(self):
+		return list(self.data.keys())
+	
+	def pick(self, category):
+		if category not in self.data or len(self.data[category]) == 0:
+			return "DELETE NINE"
+		
+		return random.choice(self.data[category])
+	
+	def pick_with_eval(self, category, params={}):
+		return NewMessages.evaluate(self.pick(category), params)
+	
+	@staticmethod
+	def evaluate(message, params={}):
+		for param in params:
+			message = message.replace(f"%{param}%", params[param])
+		
+		# Evaluate %PICK(a, b, c ...)% expressions
+		for match in NewMessages.PICK_regex.findall(message):
+			ch = random.choice([x.strip() for x in match[6:-2].split(",")])
+			message = message.replace(match, ch)
+		
+		return message
 
-def removeMessage(msg):
-	try:
-		msgs = loadJson(MESSAGES_JSON)
-		msgs.remove(msg.strip())
-		saveJson(MESSAGES_JSON, msgs)
-		return True
-	except ValueError:
-		return False
+if os.path.exists(MESSAGES_JSON) and not os.path.exists(NEW_MESSAGES_JSON):
+	print("Migrating to new_messages.json format")
+	saveJson(NEW_MESSAGES_JSON, {"work_profit": loadJson(MESSAGES_JSON)})
+
+new_messages = NewMessages(NEW_MESSAGES_JSON)
 
 ## Utils
 def formatTime(t):
@@ -102,7 +171,12 @@ def formatTime(t):
 	if seconds != 0:
 		s.append(f"{seconds} second" + ("s" if seconds != 1 else ""))
 	
-	return " ".join(s)
+	if len(s) > 1:
+		s = ", ".join(s[:-1]) + " and " + s[-1]
+	else:
+		s = s[0]
+	
+	return s
 
 def getTime():
 	return int(time.time())
@@ -129,7 +203,10 @@ def evalListDiff(arr, cmddifflist, typ = int):
 					arr.remove(value)
 
 def formatMoney(amount):
-	return game.getProp("symbol") + str(amount)
+	if amount < 0:
+		return "-" + game.getProp("symbol") + str(abs(amount))
+	else:
+		return game.getProp("symbol") + str(amount)
 
 def getName(u, ping=False):
 	return f"<@{u.id}>" if ping else f"**{u.display_name}**"
@@ -168,6 +245,10 @@ class Player:
 		self.givePoints(amount)
 		return self.money, self.points
 	
+	def lose(self, amount):
+		self.money -= amount
+		return self.money, self.points
+	
 	def getNukes(self):
 		return self.nukes
 	
@@ -198,6 +279,12 @@ class Player:
 		profit = random.randint(game.getProp("minWorkProfit"), game.getProp("maxWorkProfit"))
 		self.pay(profit)
 		return formatMoney(profit)
+	
+	def doLoss(self):
+		self.setCooldown("work_cooldown", "workCooldown")
+		loss = random.randint(game.getProp("minWorkLoss"), game.getProp("maxWorkLoss"))
+		self.lose(loss)
+		return formatMoney(loss)
 	
 	def launchedNuke(self):
 		self.nukes -= 1
@@ -425,7 +512,7 @@ async def player_stats(interaction: discord.Interaction, user: discord.User = No
 	
 	await interaction.response.send_message(f"Stats for **{user.display_name}**:\n* Nukes: {nukes}\n* Money: {money}\n* Points: {points}")
 
-@client.tree.command(name="work", description="Do some work to gain money.")
+@client.tree.command(name="work", description="Do some work to gain money, at some risk.")
 @discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
 async def player_work(interaction: discord.Interaction):
 	player = game.getPlayer(interaction.user.id)
@@ -433,12 +520,28 @@ async def player_work(interaction: discord.Interaction):
 	work_cooldown = player.getCooldown("work_cooldown")
 	
 	if work_cooldown:
-		await interaction.response.send_message(f"You can't work right now. You can work again in {formatTime(work_cooldown)}.", ephemeral=True)
+		await interaction.response.send_message(f"You can't work right now because you have already worked within the last {formatTime(game.getProp('workCooldown'))}. You can work again in {formatTime(work_cooldown)}.", ephemeral=True)
 		return
 	
-	profit = player.doWork()
+	failure_chance = game.getProp("workLossFreq")
 	
-	await interaction.response.send_message(f"You {getMessage()} and profit {profit}!")
+	message_params = {
+		"NAME": interaction.user.name,
+		"DISPLAY_NAME": interaction.user.display_name,
+		"RANDOM_FOX": random.choice(["Tails", "Sails", "Mangey", "Nine"]),
+		"RANDOM_ADMIN_PING": random.choice([f"<@{a}>" for a in game.getProp("admins")]),
+	}
+	
+	if random.random() >= failure_chance:
+		# Success!
+		profit = player.doWork()
+		msg = new_messages.pick_with_eval("work_profit", message_params)
+		await interaction.response.send_message(f"You {msg} and gain {profit}!")
+	else:
+		# Failure!
+		loss = player.doLoss()
+		msg = new_messages.pick_with_eval("work_loss", message_params)
+		await interaction.response.send_message(f"You {msg} and lose {loss}!")
 	
 	log(f"work guild:{interaction.guild_id} channel:{interaction.channel_id} whom:{uidstr(interaction.user)}")
 	
@@ -513,39 +616,72 @@ async def list_properties(interaction: discord.Interaction, prefix: str = ""):
 	
 	await interaction.response.send_message(msg if msg else "*No properties*", ephemeral=True)
 
-@client.tree.command(name="add-message", description="Add a message for /work.")
-@discord.app_commands.describe(content="Content of the message")
-async def add_message(interaction: discord.Interaction, content: str):
+
+async def autocomplete_categories(interaction: discord.Interaction, current: str):
+	choices = []
+	
+	for category in new_messages.list_categories():
+		if (current in category):
+			choices.append(discord.app_commands.Choice(name=category, value=category))
+	
+	return choices
+
+@client.tree.command(
+	name="add-message",
+	description="Add a message for /work."
+)
+@discord.app_commands.describe(
+	category="Category of the message, usually named after where the message is displayed",
+	content="Content of the message"
+)
+@discord.app_commands.autocomplete(category=autocomplete_categories)
+async def add_message(interaction: discord.Interaction, category: str, content: str):
 	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot add messages.", ephemeral=True)
-		return
-	
-	addMessage(content)
-	
-	await interaction.response.send_message(f"Added the message `{content}`!", ephemeral=True)
+	else:
+		new_messages.add(category, content)
+		
+		await interaction.response.send_message(f"Added the message `{content}`!", ephemeral=True)
 
-@client.tree.command(name="remove-message", description="Remove a message for /work.")
-@discord.app_commands.describe(content="Content of the message")
-async def remove_message(interaction: discord.Interaction, content: str):
+
+@client.tree.command(
+	name="remove-message",
+	description="Remove a message for /work."
+)
+@discord.app_commands.describe(
+	category="Category of the message, usually named after where the message is displayed",
+	content="Content of the message"
+)
+@discord.app_commands.autocomplete(category=autocomplete_categories)
+async def remove_message(interaction: discord.Interaction, category: str, content: str):
 	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot remove messages.", ephemeral=True)
-		return
-	
-	await interaction.response.send_message(f"Removed message `{content}`!" if removeMessage(content) else f"Could not find message matching `{content}`. Make sure you've typed it correctly (including exact same capitialisation and spacing).", ephemeral=True)
+	else:
+		removed = new_messages.remove(category, content)
+		
+		await interaction.response.send_message(f"Removed message `{content}`!" if removed else f"Could not find message matching `{content}` in category `{category}`. Make sure you've typed it correctly (including exact same capitialisation and spacing).", ephemeral=True)
 
-@client.tree.command(name="list-messages", description="List messages for /work.")
+
+@client.tree.command(
+	name="list-messages",
+	description="List messages for /work."
+)
 async def list_message(interaction: discord.Interaction):
 	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot list out messages.", ephemeral=True)
-		return
-	
-	msgs = loadJson(MESSAGES_JSON)
-	resp = f"Current messages can can appear with `/work` ({len(msgs)}):\n"
-	
-	for text in msgs:
-		resp += f" * `{text}`\n"
-	
-	await interaction.response.send_message(resp, ephemeral=True)
+	else:
+		resp = "# List of messages\n"
+		
+		for cat in new_messages.list_categories():
+			resp += f"Messages in category `{cat}` ({len(new_messages.list_for(cat))} messages):\n"
+			
+			for msg in new_messages.list_for(cat):
+				resp += f" * `{msg}`\n"
+			
+			resp += "\n"
+		
+		await interaction.response.send_message(resp, ephemeral=True)
+
 
 async def flagify_flag_list(interaction: discord.Interaction, current: str):
 	lst = []
