@@ -649,6 +649,9 @@ async def autocomplete_categories(interaction: discord.Interaction, current: str
 	content="Content of the message"
 )
 @discord.app_commands.autocomplete(category=autocomplete_categories)
+async def add_message_(interaction: discord.Interaction, category: str, content: str):
+	await add_message(interaction, category, content)
+
 async def add_message(interaction: discord.Interaction, category: str, content: str):
 	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot add messages.", ephemeral=True)
@@ -667,6 +670,9 @@ async def add_message(interaction: discord.Interaction, category: str, content: 
 	content="Content of the message"
 )
 @discord.app_commands.autocomplete(category=autocomplete_categories)
+async def remove_message_(interaction: discord.Interaction, category: str, content: str):
+	await remove_message(interaction, category, content)
+
 async def remove_message(interaction: discord.Interaction, category: str, content: str):
 	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot remove messages.", ephemeral=True)
@@ -680,21 +686,55 @@ async def remove_message(interaction: discord.Interaction, category: str, conten
 	name="list-messages",
 	description="List messages for /work."
 )
-async def list_message(interaction: discord.Interaction):
+@discord.app_commands.describe(category="Optional category filter")
+async def list_messages_(interaction: discord.Interaction, category: str = None):
+	await list_messages(interaction, category)
+
+async def list_messages(interaction: discord.Interaction, category: str = None):
 	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot list out messages.", ephemeral=True)
 	else:
-		resp = "# List of messages\n"
+		resp = "## List of messages\n"
 		
-		for cat in new_messages.list_categories():
-			resp += f"Messages in category `{cat}` ({len(new_messages.list_for(cat))} messages):\n"
+		# List for all categories
+		if category == None:
+			for cat in new_messages.list_categories():
+				resp += f"Messages in category `{cat}` ({len(new_messages.list_for(cat))} messages):\n"
+				
+				for msg in new_messages.list_for(cat):
+					resp += f" * `{msg}`\n"
+				
+				resp += "\n"
+		# List only for one category
+		else:
+			resp += f"Messages ({len(new_messages.list_for(category))} messages):\n"
 			
-			for msg in new_messages.list_for(cat):
+			for msg in new_messages.list_for(category):
 				resp += f" * `{msg}`\n"
 			
 			resp += "\n"
 		
 		await interaction.response.send_message(resp, ephemeral=True)
+
+
+def generate_specialised_message_commands(term, category):
+	@client.tree.command(name=f"add-{term}-message", description=f"Add a message for {term} in /work")
+	@discord.app_commands.describe(content="Content of the messasge")
+	async def specialised_add_message(interaction: discord.Interaction, content: str):
+		await add_message(interaction, category, content)
+	
+	@client.tree.command(name=f"remove-{term}-message", description=f"Remove a message from {term} in /work")
+	@discord.app_commands.describe(content="Content of the messasge")
+	async def specialised_add_message(interaction: discord.Interaction, content: str):
+		await remove_message(interaction, category, content)
+	
+	@client.tree.command(name=f"list-{term}-messages", description=f"List messages for {term} in /work")
+	async def specialised_add_message(interaction: discord.Interaction):
+		await list_messages(interaction, category)
+
+generate_specialised_message_commands("profit", "work_profit")
+generate_specialised_message_commands("loss", "work_loss")
+
 
 
 async def flagify_flag_list(interaction: discord.Interaction, current: str):
