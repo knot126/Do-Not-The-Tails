@@ -737,6 +737,35 @@ generate_specialised_message_commands("loss", "work_loss")
 
 
 
+@client.tree.command(
+	name="rates",
+	description="View current probabilities and cooldown times."
+)
+@discord.app_commands.describe(announce="Should everyone be able to see the command output?")
+async def odds(interaction: discord.Interaction, announce: bool = False):
+	odds = "## Current Odds and Cooldowns\n\n"
+	def add(m=""):
+		nonlocal odds
+		odds += f" * {m}\n"
+	
+	add(f"You can nuke every **{formatTime(game.getProp('nukeCooldown'))}**.")
+	
+	if game.getProp('nukeHitReward') > 0:
+		add(f"You will earn **{formatMoney(game.getProp('nukeHitReward'))}** upon a successful hit.")
+	
+	add(f"Nukes will fail **{100*game.getProp('nukeFailFreq')}%** of the time.")
+	
+	add(f"You can steal up to **{game.getProp('nukeStealLimit')} nukes** every **{formatTime(game.getProp('nukeStealCooldown'))}**.")
+	add(f"You can build nukes every **{formatTime(game.getProp('nukeBuildCooldown'))}** by spending **{formatMoney(game.getProp('nukeBuildCost'))}** per nuke.")
+	add(f"You can work every **{formatTime(game.getProp('workCooldown'))}**.")
+	add(f"You have a **{100*game.getProp('workLossFreq')}%** chance of failing when you work.")
+	add(f"You will earn between **{formatMoney(game.getProp('minWorkProfit'))}** and **{formatMoney(game.getProp('maxWorkProfit'))}** when your work is successful.")
+	add(f"You will lose between **{formatMoney(game.getProp('minWorkLoss'))}** and **{formatMoney(game.getProp('maxWorkLoss'))}** when your work fails.")
+	
+	await interaction.response.send_message(odds, ephemeral=not announce)
+
+
+
 async def flagify_flag_list(interaction: discord.Interaction, current: str):
 	lst = []
 	
