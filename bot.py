@@ -8,10 +8,17 @@ import pickle
 import random
 import traceback
 import math
+from discord import app_commands
+from discord import Interaction
+from cryptography.fernet import Fernet
 from pathlib import Path
 from io import BytesIO
 from typing import List
 from datetime import datetime, timezone
+from typing import Literal
+from enum import Enum
+from textwrap import wrap
+import lzma
 import re
 import dntt_image
 import flagifier_v2
@@ -46,17 +53,27 @@ DEFAULT_PROPS = {
 	"admins": ADMIN_USERS,
 }
 
+PropertyName = Literal[*list(DEFAULT_PROPS.keys())]
+
 MESSAGES_JSON = "messages.json"
 NEW_MESSAGES_JSON = "new_messages.json"
 
-def getConfig(prop=None):
+def get_global_config(prop, fallback=None):
+	global CACHED_CONFIG
+	
+	if not CACHED_CONFIG:
+		CACHED_CONFIG = json.loads(Path("config.json").read_text())
+	
+	return CACHED_CONFIG[prop] if prop in CACHED_CONFIG else fallback
+
+def set_global_conifg(prop, value):
 	global CACHED_CONFIG
 	
 	if (CACHED_CONFIG):
-		return CACHED_CONFIG[prop] if prop else CACHED_CONFIG
-	else:
 		CACHED_CONFIG = json.loads(Path("config.json").read_text())
-		return CACHED_CONFIG[prop] if prop else CACHED_CONFIG
+	
+	CACHED_CONFIG[prop] = value
+	Path("config.json").write_text(json.dumps(CACHED_CONFIG, indent=4))
 
 def log(text):
 	try:
@@ -74,22 +91,24 @@ def loadJson(name):
 def saveJson(name, data):
 	Path(name).write_text(json.dumps(data, indent=4))
 
-# def getMessage():
-# 	return random.choice(loadJson(MESSAGES_JSON))
-# 
-# def addMessage(msg):
-# 	msgs = loadJson(MESSAGES_JSON)
-# 	msgs.append(msg.strip())
-# 	saveJson(MESSAGES_JSON, msgs)
-# 
-# def removeMessage(msg):
-# 	try:
-# 		msgs = loadJson(MESSAGES_JSON)
-# 		msgs.remove(msg.strip())
-# 		saveJson(MESSAGES_JSON, msgs)
-# 		return True
-# 	except ValueError:
-# 		return False
+def get_crypt_key():
+	key = get_global_config("log_encryption_key")
+	
+	if not key:
+		key = Fernet.generate_key()
+		set_global_conifg("log_encryption_key", str(key, 'utf-8'))
+	
+	return key
+
+FERNET = Fernet(get_crypt_key())
+
+def encrypt(data):
+	if type(data) != bytes:
+		data = data.encode('utf-8')
+	
+	data = lzma.compress(data)
+	
+	return str(FERNET.encrypt(data), 'utf-8')
 
 class NewMessages:
 	PICK_regex = re.compile(r"%PICK\([^\)]+\)%")
@@ -425,7 +444,7 @@ async def on_ready():
 @client.tree.command(name="nuke", description="Nukes another user.")
 @discord.app_commands.describe(user="User to nuke", wait="Time to wait in seconds, max 300 (5min)", ping="If the user will be pinged", reason="Reason for nuking this user")
 @discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-async def nuke(interaction: discord.Interaction, user: discord.User, wait: int = 0, ping: bool = False, reason: str = ""):
+async def nuke(interaction: Interaction, user: discord.User, wait: int = 0, ping: bool = False, reason: str = ""):
 	actor = interaction.user
 	
 	aggressor = game.getPlayer(actor.id)
@@ -475,7 +494,7 @@ async def nuke(interaction: discord.Interaction, user: discord.User, wait: int =
 @client.tree.command(name="steal", description="Steal nukes from another player.")
 @discord.app_commands.describe(user="Player to steal nukes from", amount="Number of nukes to steal", ping="If the user should be pinged", reason="Reason for stealing this user's nukes")
 @discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-async def steal_nukes(interaction: discord.Interaction, user: discord.User, amount: int = 1, ping: bool = False, reason: str = ""):
+async def steal_nukes(interaction: Interaction, user: discord.User, amount: int = 1, ping: bool = False, reason: str = ""):
 	actor = interaction.user.id
 	
 	aggressor = game.getPlayer(actor)
@@ -515,7 +534,7 @@ async def steal_nukes(interaction: discord.Interaction, user: discord.User, amou
 	game.save()
 
 @client.tree.command(name="stats", description="Get stats about yourself or another player.")
-async def player_stats(interaction: discord.Interaction, user: discord.User = None):
+async def player_stats(interaction: Interaction, user: discord.User = None):
 	user = user or interaction.user
 	
 	player = game.getPlayer(user.id)
@@ -528,7 +547,7 @@ async def player_stats(interaction: discord.Interaction, user: discord.User = No
 
 @client.tree.command(name="work", description="Do some work to gain money, at some risk.")
 @discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-async def player_work(interaction: discord.Interaction):
+async def player_work(interaction: Interaction):
 	player = game.getPlayer(interaction.user.id)
 	
 	work_cooldown = player.getCooldown("work_cooldown")
@@ -564,7 +583,7 @@ async def player_work(interaction: discord.Interaction):
 @client.tree.command(name="build", description="Spend money to build more nukes.")
 @discord.app_commands.describe(amount="Number of nukes to build")
 @discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-async def player_build(interaction: discord.Interaction, amount: int = 1):
+async def player_build(interaction: Interaction, amount: int = 1):
 	player = game.getPlayer(interaction.user.id)
 	
 	build_cooldown = player.getCooldown("build_cooldown")
@@ -587,13 +606,13 @@ async def player_build(interaction: discord.Interaction, amount: int = 1):
 
 ### ADMIN STUFF ###
 
+def admin_check(interaction: Interaction) -> bool:
+	return interaction.user.id in game.getProp("admins")
+
 @client.tree.command(name="give-nukes", description="Give a player nukes :3")
-@discord.app_commands.describe(user="The player", amount="Number of nukes to give them")
-async def give_nukes(interaction: discord.Interaction, user: discord.User, amount: int):
-	if (interaction.user.id not in game.getProp("admins")):
-		await interaction.response.send_message(f"You are not the game master and cannot bestow others with nukes.", ephemeral=True)
-		return
-	
+@app_commands.describe(user="The player", amount="Number of nukes to give them")
+@app_commands.check(admin_check)
+async def give_nukes(interaction: Interaction, user: discord.User, amount: int):
 	player = game.getPlayer(user.id)
 	player.addFreeNukes(amount)
 	await interaction.response.send_message(f"Gave {amount} free nukes to {user.display_name}!")
@@ -601,12 +620,9 @@ async def give_nukes(interaction: discord.Interaction, user: discord.User, amoun
 	game.save()
 
 @client.tree.command(name="set-property", description="Set game property.")
-@discord.app_commands.describe(property="Name of property to set", value="Value to set property to")
-async def set_property(interaction: discord.Interaction, property: str, value: str = ""):
-	if (interaction.user.id not in game.getProp("admins")):
-		await interaction.response.send_message(f"You are not the game master and cannot set game properties.", ephemeral=True)
-		return
-	
+@app_commands.describe(property="Name of property to set", value="Value to set property to")
+@app_commands.check(admin_check)
+async def set_property(interaction: Interaction, property: PropertyName, value: str = ""):
 	try:
 		game.setProp(property, value if value else None)
 		await interaction.response.send_message(f"Set property successfully", ephemeral=True)
@@ -616,12 +632,9 @@ async def set_property(interaction: discord.Interaction, property: str, value: s
 		print(traceback.format_exc())
 
 @client.tree.command(name="list-properties", description="List all game properties.")
-@discord.app_commands.describe(prefix="Property name prefix to filter by")
-async def list_properties(interaction: discord.Interaction, prefix: str = ""):
-	if (interaction.user.id not in game.getProp("admins")):
-		await interaction.response.send_message(f"You are not the game master and cannot view game properties.", ephemeral=True)
-		return
-	
+@app_commands.describe(prefix="Property name prefix to filter by")
+@app_commands.check(admin_check)
+async def list_properties(interaction: Interaction, prefix: str = ""):
 	msg = ""
 	
 	for k, v in game.allProps().items():
@@ -631,7 +644,7 @@ async def list_properties(interaction: discord.Interaction, prefix: str = ""):
 	await interaction.response.send_message(msg if msg else "*No properties*", ephemeral=True)
 
 
-async def autocomplete_categories(interaction: discord.Interaction, current: str):
+async def autocomplete_categories(interaction: Interaction, current: str):
 	choices = []
 	
 	for category in new_messages.list_categories():
@@ -649,10 +662,10 @@ async def autocomplete_categories(interaction: discord.Interaction, current: str
 	content="Content of the message"
 )
 @discord.app_commands.autocomplete(category=autocomplete_categories)
-async def add_message_(interaction: discord.Interaction, category: str, content: str):
+async def add_message_(interaction: Interaction, category: str, content: str):
 	await add_message(interaction, category, content)
 
-async def add_message(interaction: discord.Interaction, category: str, content: str):
+async def add_message(interaction: Interaction, category: str, content: str):
 	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot add messages.", ephemeral=True)
 	else:
@@ -670,10 +683,10 @@ async def add_message(interaction: discord.Interaction, category: str, content: 
 	content="Content of the message"
 )
 @discord.app_commands.autocomplete(category=autocomplete_categories)
-async def remove_message_(interaction: discord.Interaction, category: str, content: str):
+async def remove_message_(interaction: Interaction, category: str, content: str):
 	await remove_message(interaction, category, content)
 
-async def remove_message(interaction: discord.Interaction, category: str, content: str):
+async def remove_message(interaction: Interaction, category: str, content: str):
 	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot remove messages.", ephemeral=True)
 	else:
@@ -687,10 +700,10 @@ async def remove_message(interaction: discord.Interaction, category: str, conten
 	description="List messages for /work."
 )
 @discord.app_commands.describe(category="Optional category filter")
-async def list_messages_(interaction: discord.Interaction, category: str = None):
+async def list_messages_(interaction: Interaction, category: str = None):
 	await list_messages(interaction, category)
 
-async def list_messages(interaction: discord.Interaction, category: str = None):
+async def list_messages(interaction: Interaction, category: str = None):
 	if (interaction.user.id not in game.getProp("admins")):
 		await interaction.response.send_message(f"You are not the game master and cannot list out messages.", ephemeral=True)
 	else:
@@ -720,16 +733,16 @@ async def list_messages(interaction: discord.Interaction, category: str = None):
 def generate_specialised_message_commands(term, category):
 	@client.tree.command(name=f"add-{term}-message", description=f"Add a message for {term} in /work")
 	@discord.app_commands.describe(content="Content of the messasge")
-	async def specialised_add_message(interaction: discord.Interaction, content: str):
+	async def specialised_add_message(interaction: Interaction, content: str):
 		await add_message(interaction, category, content)
 	
 	@client.tree.command(name=f"remove-{term}-message", description=f"Remove a message from {term} in /work")
 	@discord.app_commands.describe(content="Content of the messasge")
-	async def specialised_add_message(interaction: discord.Interaction, content: str):
+	async def specialised_add_message(interaction: Interaction, content: str):
 		await remove_message(interaction, category, content)
 	
 	@client.tree.command(name=f"list-{term}-messages", description=f"List messages for {term} in /work")
-	async def specialised_add_message(interaction: discord.Interaction):
+	async def specialised_add_message(interaction: Interaction):
 		await list_messages(interaction, category)
 
 generate_specialised_message_commands("profit", "work_profit")
@@ -742,11 +755,13 @@ generate_specialised_message_commands("loss", "work_loss")
 	description="View current probabilities and cooldown times."
 )
 @discord.app_commands.describe(announce="Should everyone be able to see the command output?")
-async def odds(interaction: discord.Interaction, announce: bool = False):
+async def odds(interaction: Interaction, announce: bool = False):
 	odds = "## Current Odds and Cooldowns\n\n"
 	def add(m=""):
 		nonlocal odds
 		odds += f" * {m}\n"
+	
+	a = 1/0
 	
 	add(f"You can nuke every **{formatTime(game.getProp('nukeCooldown'))}**.")
 	
@@ -766,7 +781,7 @@ async def odds(interaction: discord.Interaction, announce: bool = False):
 
 
 
-async def flagify_flag_list(interaction: discord.Interaction, current: str):
+async def flagify_flag_list(interaction: Interaction, current: str):
 	lst = []
 	
 	for flag_name in dntt_image.get_flag_name_list():
@@ -784,7 +799,7 @@ async def flagify_flag_list(interaction: discord.Interaction, current: str):
 	horizontal="When specifying hex codes, this controls if the stripes shall be horizontal or vertical",
 )
 @discord.app_commands.autocomplete(flag=flagify_flag_list)
-async def flagify_tails_image(interaction: discord.Interaction, attachment: discord.Attachment, flag: str = "french", value_range: str = "0 100", saturation_range: str = "40 100", hue_range: str = "20 50", horizontal: bool = True):
+async def flagify_tails_image(interaction: Interaction, attachment: discord.Attachment, flag: str = "french", value_range: str = "0 100", saturation_range: str = "40 100", hue_range: str = "20 50", horizontal: bool = True):
 	import dntt_image
 	
 	await interaction.response.defer(thinking=True)
@@ -846,7 +861,7 @@ async def flagify_tails_image(interaction: discord.Interaction, attachment: disc
 
 
 
-async def flagify_v2_get_flag_list(interaction: discord.Interaction, current: str):
+async def flagify_v2_get_flag_list(interaction: Interaction, current: str):
 	lst = []
 	
 	for flag_name in flagifier_v2.get_flag_name_list():
@@ -863,7 +878,7 @@ async def flagify_v2_get_flag_list(interaction: discord.Interaction, current: st
 	hue_range="Range of hues to flagify as two integers separated by a space (default: between 20 and 50, for example: more red: 0 40, more yellow: 30 70)"
 )
 @discord.app_commands.autocomplete(flag=flagify_v2_get_flag_list)
-async def flagify_v2(interaction: discord.Interaction, attachment: discord.Attachment, flag: str = "french", value_range: str = "0 100", saturation_range: str = "40 100", hue_range: str = "20 50"):
+async def flagify_v2(interaction: Interaction, attachment: discord.Attachment, flag: str = "french", value_range: str = "0 100", saturation_range: str = "40 100", hue_range: str = "20 50"):
 	await interaction.response.defer(thinking=True)
 	
 	async def respond(msg=None, file=None):
@@ -910,6 +925,18 @@ async def flagify_v2(interaction: discord.Interaction, attachment: discord.Attac
 
 
 
+@client.tree.error
+async def on_command_error(interaction: Interaction, error):
+	match type(error):
+		case app_commands.errors.CheckFailure:
+			await interaction.response.send_message("You don't have permissions to run this command, or you are running it in a disallowed context.", ephemeral=True)
+		
+		case _:
+			traceback.print_exception(error)
+			info = encrypt("\n\n".join(traceback.format_exception(error)))
+			info = "\n".join([info[i:i+80] for i in range(0, len(info), 80)])
+			await interaction.response.send_message(f"Sorry! Something went horridly wrong. <@818564860484780083>\n\n```\n{info}\n```")
+
 
 I_AM_REPLACEMENTS = {
 	"im": "hi",
@@ -946,6 +973,6 @@ async def on_message(message):
 
 if __name__ == "__main__":
 	try:
-		client.run(getConfig('token'))
+		client.run(get_global_config('token'))
 	finally:
 		game.save()
