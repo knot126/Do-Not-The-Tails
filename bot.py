@@ -31,13 +31,13 @@ ADMIN_USERS = [818564860484780083]
 DEFAULT_PROPS = {
 	"symbol": "€",
 	"nukeCooldown": 10,
-	"nukeStealTime": 20,
 	"nukeStealCooldown": 180,
 	"nukeStealLimit": 3,
 	"nukeBuildCooldown": 15,
 	"nukeFailFreq": 0.01,
 	"initialPlayerNukes": 3,
 	"initialPlayerMoney": 1000,
+	"initialPlayerLuck": 1.0,
 	"nukeBuildCost": 100,
 	"nukeHitReward": 120,
 	"nukeHitDamageTime": 10,
@@ -47,6 +47,8 @@ DEFAULT_PROPS = {
 	"workLossFreq": 0.2,
 	"minWorkLoss": 750,
 	"maxWorkLoss": 2750,
+	"luckLossOnProfit": 0.0,
+	"luckGainOnLoss": 0.0,
 	"dadJoke": True,
 	"dadJokeFreq": 0.01,
 	"dadJokeServers": [],
@@ -237,6 +239,7 @@ class Player:
 		# These are the defaults
 		self.nukes = game.getProp("initialPlayerNukes")
 		self.money = game.getProp("initialPlayerMoney")
+		self.luck = game.getProp("initialPlayerLuck")
 		self.points = 0
 		self.stolen_until = 0
 		self.nuke_cooldown = 0
@@ -279,7 +282,6 @@ class Player:
 		return "∆ " + str(self.points)
 	
 	def gotNukesStolen(self, count):
-		# self.setCooldown("stolen_until", "nukeStealTime")
 		self.nukes = max(0, self.nukes - count)
 	
 	def stoleNukes(self, count):
@@ -298,12 +300,14 @@ class Player:
 		self.setCooldown("work_cooldown", "workCooldown")
 		profit = random.randint(game.getProp("minWorkProfit"), game.getProp("maxWorkProfit"))
 		self.pay(profit)
+		self.luck -= game.getProp("luckLossOnProfit")
 		return formatMoney(profit)
 	
 	def doLoss(self):
 		self.setCooldown("work_cooldown", "workCooldown")
 		loss = random.randint(game.getProp("minWorkLoss"), game.getProp("maxWorkLoss"))
 		self.lose(loss)
+		self.luck += game.getProp("luckGainOnLoss")
 		return formatMoney(loss)
 	
 	def launchedNuke(self):
@@ -337,6 +341,19 @@ class Player:
 		
 		t = getattr(self, prop) - getTime()
 		return t if t > 0 else None
+	
+	def listAttributes(self):
+		return list(self.__dict__.keys())
+	
+	def setAttribute(self, attrib, data):
+		if hasattr(self, attrib):
+			setattr(self, attrib, type(getattr(self, attrib))(data))
+			return True
+		
+		return False
+	
+	def getLuck(self):
+		return max(min(self.luck, 5.0), 0.5)
 	
 	def pack(self):
 		return self.__dict__
@@ -390,7 +407,7 @@ class Game:
 		
 		for id, data in self.players.items():
 			p = Player()
-			self.players[id] = p.unpack(data)
+			self.players[int(id)] = p.unpack(data)
 		
 		self.props = DEFAULT_PROPS | self.props
 		
@@ -565,7 +582,7 @@ async def player_work(interaction: Interaction):
 		"RANDOM_ADMIN_PING": random.choice([f"<@{a}>" for a in game.getProp("admins")]),
 	}
 	
-	if random.random() >= failure_chance:
+	if random.random() >= (failure_chance / player.getLuck()):
 		# Success!
 		profit = player.doWork()
 		msg = new_messages.pick_with_eval("work_profit", message_params)
@@ -606,18 +623,23 @@ async def player_build(interaction: Interaction, amount: int = 1):
 
 ### ADMIN STUFF ###
 
+PlayerAttributeName = Literal[*Player().listAttributes()]
+
 def admin_check(interaction: Interaction) -> bool:
 	return interaction.user.id in game.getProp("admins")
 
-@client.tree.command(name="give-nukes", description="Give a player nukes :3")
-@app_commands.describe(user="The player", amount="Number of nukes to give them")
+@client.tree.command(name="set-player-attribute", description="Set an attribute associated with a player to a specific value")
+@app_commands.describe(user="The player", attribute="Which attribute to modify", value="Value to set that attribute to")
 @app_commands.check(admin_check)
-async def give_nukes(interaction: Interaction, user: discord.User, amount: int):
+async def set_player_attribute(interaction: Interaction, user: discord.User, attribute: PlayerAttributeName, value: str):
 	player = game.getPlayer(user.id)
-	player.addFreeNukes(amount)
-	await interaction.response.send_message(f"Gave {amount} free nukes to {user.display_name}!")
-	log(f"nukes-blessed guild:{interaction.guild_id} channel:{interaction.channel_id} by:{uidstr(interaction.user)} to:{uidstr(user)} count:{amount}")
-	game.save()
+	try:
+		player.setAttribute(attribute, value)
+		await interaction.response.send_message(f"Set **{user.display_name}**'s `{attribute}` attribute to `{value}`!")
+		log(f"modify-attribute guild:{interaction.guild_id} channel:{interaction.channel_id} by:{uidstr(interaction.user)} to:{uidstr(user)} attribute:{attribute} value:{value}")
+		game.save()
+	except ValueError as e:
+		await interaction.response.send_message(f"Couldn't parse value! Make sure it's right for the type (e.g. an integer for int or a number for float).", ephemeral=True)
 
 @client.tree.command(name="set-property", description="Set game property.")
 @app_commands.describe(property="Name of property to set", value="Value to set property to")
