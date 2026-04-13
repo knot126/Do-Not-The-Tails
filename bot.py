@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Literal
 from enum import Enum
 from textwrap import wrap
+from sys import argv, exit
 import lzma
 import re
 import dntt_image
@@ -368,7 +369,7 @@ class Game:
 		self.props = DEFAULT_PROPS.copy()
 	
 	def getProp(self, name):
-		return self.props[name]
+		return self.props.get(name, DEFAULT_PROPS[name])
 	
 	def setProp(self, name, value = None):
 		if name in self.props:
@@ -439,9 +440,13 @@ class Game:
 	
 	def load(self):
 		try:
-			self.unpack(pickle.loads(Path(SAVE_FILE).read_bytes()))
+			path = Path(SAVE_FILE)
+			if (path.exists()):
+				self.unpack(pickle.loads(path.read_bytes()))
 		except:
-			print("failed to load game")
+			print("!!! failed to load game !!!")
+			traceback.print_exc()
+			os.exit(666)
 
 game = Game()
 
@@ -453,10 +458,10 @@ client.tree = discord.app_commands.CommandTree(client)
 
 @client.event
 async def on_ready():
+	game.load()
 	print(f'{client.user} has connected to Discord!')
 	await client.tree.sync()
 	print(f'Command tree synched')
-	game.load()
 
 @client.tree.command(name="nuke", description="Nukes another user.")
 @discord.app_commands.describe(user="User to nuke", wait="Time to wait in seconds, max 300 (5min)", ping="If the user will be pinged", reason="Reason for nuking this user")
@@ -994,6 +999,13 @@ async def on_message(message):
 			await message.reply(dad_joke_string)
 
 if __name__ == "__main__":
+	if "--show-error" in argv:
+		data = Path("error.log").read_text().strip().replace("\n", "").replace("\t", "").replace(" ", "")
+		data = FERNET.decrypt(data)
+		data = lzma.decompress(data)
+		print(str(data, 'utf-8').replace("\n\n", "\n"))
+		exit(0)
+	
 	try:
 		client.run(get_global_config('token'))
 	finally:
