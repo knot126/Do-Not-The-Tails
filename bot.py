@@ -19,6 +19,7 @@ from typing import Literal
 from enum import Enum
 from textwrap import wrap
 from sys import argv, exit
+import shutil
 import lzma
 import re
 import dntt_image
@@ -28,6 +29,7 @@ import flagifier_v2
 CACHED_CONFIG = None
 SAVE_FILE = "NukeGame.pkl"
 SAVE_FILE_JSON = "nuke_game.json"
+SAVE_FILE_BACKUP_DIR = "./backups"
 ADMIN_USERS = [818564860484780083]
 DEFAULT_PROPS = {
 	"symbol": "€",
@@ -416,6 +418,7 @@ class Game:
 	
 	def save(self):
 		try:
+			os
 			try:
 				os.rename(SAVE_FILE, f"{SAVE_FILE}.bak")
 			except:
@@ -430,9 +433,11 @@ class Game:
 	def _save_json(self):
 		try:
 			try:
-				os.rename(SAVE_FILE_JSON, f"{SAVE_FILE_JSON}.bak")
+				date = datetime.now().strftime('%Y-%m-%d')
+				os.rename(SAVE_FILE_JSON, f"{SAVE_FILE_BACKUP_DIR}/{date}-{SAVE_FILE_JSON}")
 			except:
 				pass
+			
 			Path(SAVE_FILE_JSON).write_text(json.dumps(self.pack(), indent=4))
 		except:
 			traceback.print_exc()
@@ -1005,6 +1010,8 @@ if __name__ == "__main__":
 		data = lzma.decompress(data)
 		print(str(data, 'utf-8').replace("\n\n", "\n"))
 		exit(0)
+	
+	os.makedirs(SAVE_FILE_BACKUP_DIR, exist_ok=True)
 	
 	try:
 		client.run(get_global_config('token'))
